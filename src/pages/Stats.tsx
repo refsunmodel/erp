@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { statsService, dailyReportService, storeService } from '@/lib/database';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface StatsData {
   employees: number;
@@ -54,6 +55,7 @@ interface SalesData {
 }
 
 export const Stats: React.FC = () => {
+  const { user } = useAuth();
   const [selectedStore, setSelectedStore] = useState('all');
   const [selectedPeriod, setSelectedPeriod] = useState('6months');
   const [startDate, setStartDate] = useState('');

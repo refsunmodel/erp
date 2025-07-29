@@ -171,13 +171,13 @@ const AdminDashboard = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto px-2 sm:px-4 py-4 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-        <p className="text-gray-600 mt-2">Welcome back! Here's what's happening with your business.</p>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+        <p className="text-gray-600 mt-2 text-sm sm:text-base">Welcome back! Here's what's happening with your business.</p>
       </div>
       
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 md:gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Employees</CardTitle>
@@ -230,7 +230,7 @@ const AdminDashboard = () => {
           <CardDescription>Current status of all task types</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-4 md:gap-6">
             <div className="space-y-3">
               <h4 className="font-medium text-blue-700">Designing Tasks</h4>
               <div className="space-y-2">
@@ -306,7 +306,7 @@ const AdminDashboard = () => {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-4 md:gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Recent Activities</CardTitle>
@@ -461,14 +461,14 @@ const EmployeeDashboard = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto px-2 sm:px-4 py-4 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">My Dashboard</h1>
-        <p className="text-gray-600 mt-2">Welcome back, {user?.name || user?.email}! Here's your task overview.</p>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">My Dashboard</h1>
+        <p className="text-gray-600 mt-2 text-sm sm:text-base">Welcome back, {user?.name || user?.email}! Here's your task overview.</p>
       </div>
 
       {/* Task Statistics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 md:gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
@@ -544,8 +544,8 @@ const EmployeeDashboard = () => {
             </div>
           ) : (
             <div className="w-full overflow-x-auto">
-              <ScrollArea className="h-96 w-full">
-                <div className="min-w-[1000px]">
+              <ScrollArea className="h-96 w-full min-w-[600px]">
+                <div className="min-w-[600px]">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -746,13 +746,13 @@ const ManagerDashboard = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto px-2 sm:px-4 py-4 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Manager Dashboard</h1>
-        <p className="text-gray-600 mt-2">Manage your team and oversee operations</p>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Manager Dashboard</h1>
+        <p className="text-gray-600 mt-2 text-sm sm:text-base">Manage your team and oversee operations</p>
       </div>
       
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 md:gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Team Size</CardTitle>

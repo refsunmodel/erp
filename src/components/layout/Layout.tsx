@@ -1,6 +1,5 @@
 import React from 'react';
 import { useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
 import { Sidebar } from './Sidebar';
 import { NotificationCenter } from './NotificationCenter';
 
@@ -9,8 +8,6 @@ interface LayoutProps {
 }
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
-  const { user } = useAuth();
-
   // Enable audio context on user interaction
   useEffect(() => {
     const enableAudio = () => {

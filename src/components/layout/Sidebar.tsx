@@ -30,7 +30,7 @@ const menuItems = {
   ],
   Manager: [
     { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { title: 'Employees', href: '/employees', icon: Users },
+    // { title: 'Employees', href: '/employees', icon: Users },
     { title: 'Tasks', href: '/tasks', icon: CheckSquare },
     { title: 'Attendance', href: '/attendance', icon: Calendar },
     { title: 'Stats & Trends', href: '/stats', icon: TrendingUp },
@@ -97,8 +97,7 @@ export const Sidebar: React.FC = () => {
       <div
         className={cn(
           'fixed left-0 top-0 z-40 h-full bg-white border-r border-gray-200 transition-transform duration-300 ease-in-out',
-          'w-64 md:w-64',
-          // Mobile: show/hide based on mobileMenuOpen, Desktop: always visible
+          'w-64 max-w-full md:w-64',
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         )}
       >
@@ -117,7 +116,7 @@ export const Sidebar: React.FC = () => {
           </div>
 
           {/* Navigation */}
-          <ScrollArea className="flex-1 px-3 py-4">
+          <ScrollArea className="flex-1 px-2 py-4">
             <nav className="space-y-1">
               {userMenuItems.map((item) => {
                 const Icon = item.icon;

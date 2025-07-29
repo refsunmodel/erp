@@ -82,9 +82,9 @@ export const Attendance: React.FC = () => {
         );
       }
 
-      setAttendanceRecords(attendanceResponse.documents as AttendanceRecord[]);
-      setEmployees(filteredEmployees as Employee[]);
-      setLaminationTypes(laminationResponse.documents as LaminationType[]);
+      setAttendanceRecords(attendanceResponse.documents as unknown as AttendanceRecord[]);
+      setEmployees(filteredEmployees as unknown as Employee[]);
+      setLaminationTypes(laminationResponse.documents as unknown as LaminationType[]);
     } catch (error: any) {
       toast({
         title: "Error",

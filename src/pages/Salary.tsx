@@ -115,9 +115,6 @@ export const Salary: React.FC = () => {
   const currentMonth = new Date().toISOString().slice(0, 7);
   const currentMonthSalary = salaryHistory.find(s => s.month === currentMonth);
   const lastPaidSalary = salaryHistory.find(s => s.status === 'Paid');
-  const totalEarningsThisYear = salaryHistory
-    .filter(s => s.month.startsWith(new Date().getFullYear().toString()))
-    .reduce((sum, s) => sum + s.netSalary, 0);
 
   const formatSalaryAmount = (amount: number) => {
     if (user?.role === 'Admin') {

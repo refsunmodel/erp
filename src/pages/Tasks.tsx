@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Plus, Calendar, Clock, User, CheckCircle2, Circle, AlertCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { taskService, employeeService } from '@/lib/database';
@@ -127,7 +127,7 @@ export const Tasks: React.FC = () => {
       const response = await employeeService.list();
       // Filter out employees that don't have authUserId
       const validEmployees = response.documents.filter((emp: any) => emp.authUserId);
-      setEmployees(validEmployees as Employee[]);
+      setEmployees(validEmployees as unknown as Employee[]);
     } catch (error: any) {
       console.error('Failed to load employees:', error);
     }
@@ -215,7 +215,7 @@ export const Tasks: React.FC = () => {
       
       // If task is being completed and it's a printing task, create delivery task
       if (newStatus === 'completed' && task.taskType === 'printing') {
-        await handleWorkflowProgression(task, taskId, newStatus);
+        await handleWorkflowProgression(task);
       }
       
       toast({
@@ -233,7 +233,7 @@ export const Tasks: React.FC = () => {
     }
   };
 
-  const handleWorkflowProgression = async (task: Task, taskId: string, newStatus: Task['status']) => {
+  const handleWorkflowProgression = async (task: Task) => {
     try {
       // Don't create new tasks if this is already a delivery task being completed
       if (task.taskType === 'delivery') {
@@ -441,11 +441,11 @@ export const Tasks: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="container mx-auto px-2 sm:px-4 py-4 space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Tasks</h1>
-          <p className="text-gray-600 mt-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Tasks</h1>
+          <p className="text-gray-600 mt-2 text-sm sm:text-base">
             {user?.role === 'Admin' ? 'Manage and assign tasks to your team' : 'Track your assigned tasks'}
           </p>
         </div>
@@ -500,7 +500,7 @@ export const Tasks: React.FC = () => {
                     <Label htmlFor="taskType">Task Type</Label>
                     <Select 
                       value={formData.taskType} 
-                      onValueChange={(value: Task['taskType']) => setFormData(prev => ({ ...prev, taskType: value }))}
+                      onValueChange={(value: string) => setFormData(prev => ({ ...prev, taskType: value as Task['taskType'] }))}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -680,7 +680,7 @@ export const Tasks: React.FC = () => {
       </div>
 
       {/* Task Statistics - Responsive Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
         <Card>
           <CardContent className="p-4 lg:p-6">
             <div className="flex items-center justify-between">
@@ -764,9 +764,8 @@ export const Tasks: React.FC = () => {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto -mx-4 sm:mx-0">
-              <div className="min-w-full inline-block align-middle">
-                <div className="min-w-[800px]">
+            <div className="w-full overflow-x-auto">
+              <div className="min-w-[600px] sm:min-w-[800px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-24 sm:w-auto">Order No</TableHead>
@@ -929,14 +928,14 @@ export const Tasks: React.FC = () => {
          
                 </div>
               </div>
-            </div>
+           
           )}
         </CardContent>
       </Card>
 
       {/* Edit Task Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl w-full sm:w-auto max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Task</DialogTitle>
           </DialogHeader>
@@ -987,7 +986,7 @@ export const Tasks: React.FC = () => {
     <Label htmlFor="editTaskType">Task Type</Label>
     <Select 
       value={formData.taskType} 
-      onValueChange={(value: Task['taskType']) => setFormData(prev => ({ ...prev, taskType: value }))}
+      onValueChange={(value: string) => setFormData(prev => ({ ...prev, taskType: value as Task['taskType'] }))}
     >
       <SelectTrigger>
         <SelectValue placeholder="Select task type" />
@@ -1084,7 +1083,7 @@ export const Tasks: React.FC = () => {
 
       {/* Task Detail Modal */}
       <TaskDetailDialog open={isTaskDetailOpen} onOpenChange={setIsTaskDetailOpen}>
-        <TaskDetailDialogContent className="max-w-2xl">
+        <TaskDetailDialogContent className="max-w-2xl w-full sm:w-auto">
           <TaskDetailDialogHeader>
             <TaskDetailDialogTitle>Task Details</TaskDetailDialogTitle>
           </TaskDetailDialogHeader>
