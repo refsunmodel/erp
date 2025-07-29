@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Users, 
   Store, 
@@ -65,10 +67,11 @@ const AdminDashboard = () => {
     deliveryCompleted: 0
   });
   const [loading, setLoading] = useState(true);
+  const [statsFilter, setStatsFilter] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
 
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [statsFilter]);
 
   const loadDashboardData = async () => {
     try {
@@ -172,6 +175,19 @@ const AdminDashboard = () => {
 
   return (
     <div className="container mx-auto px-2 sm:px-4 py-4 space-y-6">
+      {/* Stats Filter for Admin */}
+      <div className="flex gap-2 mb-2">
+        <Label>Stats Filter:</Label>
+        <Select value={statsFilter} onValueChange={v => setStatsFilter(v as any)}>
+          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="weekly">Weekly</SelectItem>
+            <SelectItem value="monthly">Monthly</SelectItem>
+            <SelectItem value="yearly">Yearly</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Admin Dashboard</h1>
         <p className="text-gray-600 mt-2 text-sm sm:text-base">Welcome back! Here's what's happening with your business.</p>

@@ -29,6 +29,7 @@ interface Employee {
   lastPaymentDate?: string;
   password?: string;
   $createdAt: string;
+  advancePayment?: number; // Add advance payment field
 }
 
 interface Store {
@@ -57,7 +58,8 @@ export const Employees: React.FC = () => {
     annualSalary: '',
     modeOfPayment: '',
     salaryDate: '',
-    storeId: ''
+    storeId: '',
+    advancePayment: '' // Add advance payment field
   });
 
   useEffect(() => {
@@ -84,7 +86,8 @@ export const Employees: React.FC = () => {
         return {
           ...emp,
           storeName: store?.name || null,
-          lastPaymentDate: lastSalary?.payDate || null
+          lastPaymentDate: lastSalary?.payDate || null,
+          advancePayment: emp.advancePayment || 0 // Add advance payment to employee object
         };
       });
       
@@ -145,9 +148,10 @@ export const Employees: React.FC = () => {
         modeOfPayment: formData.modeOfPayment,
         salaryDate: formData.salaryDate,
         storeId: formData.storeId || null,
-        password: formData.password, // Save password to database
+        password: formData.password,
         status: 'Active',
-        authUserId
+        authUserId,
+        advancePayment: Number(formData.advancePayment) || 0 // Save advance payment
       };
 
       if (editingEmployee) {
@@ -186,7 +190,8 @@ export const Employees: React.FC = () => {
       annualSalary: '',
       modeOfPayment: '',
       salaryDate: '',
-      storeId: ''
+      storeId: '',
+      advancePayment: ''
     });
     setEditingEmployee(null);
     setIsAddDialogOpen(false);
@@ -197,12 +202,13 @@ export const Employees: React.FC = () => {
     setFormData({
       name: employee.name,
       email: employee.email,
-      password: '', // Don't show password for security
+      password: '',
       role: employee.role,
       annualSalary: employee.annualSalary.toString(),
       modeOfPayment: employee.modeOfPayment || '',
       salaryDate: employee.salaryDate || '',
-      storeId: employee.storeId || ''
+      storeId: employee.storeId || '',
+      advancePayment: employee.advancePayment?.toString() || ''
     });
     setIsAddDialogOpen(true);
   };
@@ -412,6 +418,17 @@ export const Employees: React.FC = () => {
                     placeholder="e.g., 15 for 15th of every month"
                   />
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="advancePayment">Advance Payment ($)</Label>
+                  <Input
+                    id="advancePayment"
+                    type="number"
+                    value={formData.advancePayment}
+                    onChange={(e) => setFormData(prev => ({ ...prev, advancePayment: e.target.value }))}
+                    placeholder="Enter advance payment amount"
+                  />
+                </div>
                 
                 <div className="flex justify-end space-x-2 pt-4">
                   <Button type="button" variant="outline" onClick={resetForm}>
@@ -528,6 +545,7 @@ export const Employees: React.FC = () => {
                 <TableHead>Last Payment</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Password</TableHead>
+                <TableHead>Advance Payment</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -586,6 +604,9 @@ export const Employees: React.FC = () => {
                     >
                       View Password
                     </Button>
+                  </TableCell>
+                  <TableCell>
+                    <span>${employee.advancePayment?.toLocaleString() || '0'}</span>
                   </TableCell>
                   <TableCell>
                     <div className="flex space-x-2">

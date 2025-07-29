@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,7 @@ interface Task {
   assigneeName: string;
   dueDate: string;
   dueTime?: string;
-  status: 'pending' | 'in-progress' | 'completed' | 'overdue';
+  status: 'pending' | 'in-progress' | 'completed' | 'overdue' | 'delivered'; // <-- add 'delivered'
   priority: 'low' | 'medium' | 'high';
   createdBy: string;
   fileUrl?: string;
@@ -36,6 +36,7 @@ interface Task {
   workflowStage?: 'designing' | 'printing' | 'delivery' | 'completed';
   originalOrderId?: string;
   $createdAt: string;
+  parentTaskId?: string; // Add 'parentTaskId' to Task interface for workflow linking
 }
 
 interface Employee {
@@ -59,6 +60,11 @@ export const Tasks: React.FC = () => {
   const [isTaskDetailOpen, setIsTaskDetailOpen] = useState(false);
   const [selectedTaskDetail, setSelectedTaskDetail] = useState<Task | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [filter, setFilter] = useState('monthly'); // Add filter state
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [assignTask, setAssignTask] = useState<Task | null>(null);
+  const [assignType, setAssignType] = useState<'printing' | 'delivery' | null>(null);
+  const [assignEmployeeId, setAssignEmployeeId] = useState('');
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
@@ -90,27 +96,26 @@ export const Tasks: React.FC = () => {
     try {
       setLoading(true);
       let response;
-      
-      if (user?.role === 'Admin') {
-        // Admin sees all tasks
+      if (user?.role === 'Admin' || user?.role === 'Manager') { // <-- allow Manager to see all tasks
         response = await taskService.list();
       } else {
-        // Employees see tasks assigned to their auth user ID
         response = await taskService.getByAssignee(user?.$id || '');
       }
-      
       // Update task status based on due date
       const tasksWithUpdatedStatus = response.documents.map((task: any) => {
         const today = new Date();
         const dueDate = new Date(task.dueDate);
-        
-        if (task.status !== 'completed' && dueDate < today) {
+        if (task.status !== 'completed' && task.status !== 'delivered' && dueDate < today) {
           return { ...task, status: 'overdue' };
         }
         return task;
       });
-      
-      setTasks(tasksWithUpdatedStatus as Task[]);
+      // Remove delivered tasks for Delivery Supervisor
+      let filteredTasks = tasksWithUpdatedStatus;
+      if (user?.role === 'Delivery Supervisor') {
+        filteredTasks = filteredTasks.filter((t: any) => t.status !== 'delivered');
+      }
+      setTasks(filteredTasks as Task[]);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -122,10 +127,10 @@ export const Tasks: React.FC = () => {
     }
   };
 
+  // Remove role filtering from loadEmployees, always load all employees with authUserId
   const loadEmployees = async () => {
     try {
       const response = await employeeService.list();
-      // Filter out employees that don't have authUserId
       const validEmployees = response.documents.filter((emp: any) => emp.authUserId);
       setEmployees(validEmployees as unknown as Employee[]);
     } catch (error: any) {
@@ -212,6 +217,11 @@ export const Tasks: React.FC = () => {
 
       // Update the task status
       await taskService.update(taskId, { status: newStatus });
+      
+      // Fix: Only check for 'delivered' if status is 'delivered'
+      if (newStatus === 'delivered' && user?.role === 'Delivery Supervisor') {
+        setTasks(prev => prev.filter(t => t.$id !== taskId));
+      }
       
       // If task is being completed and it's a printing task, create delivery task
       if (newStatus === 'completed' && task.taskType === 'printing') {
@@ -301,6 +311,83 @@ export const Tasks: React.FC = () => {
       toast({
         title: "Error",
         description: "Failed to progress workflow: " + error.message,
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleAssignWorkflow = useCallback(async (task: Task, nextType: 'printing' | 'delivery') => {
+    if (user?.role === 'Admin' || user?.role === 'Manager') {
+      setAssignTask(task);
+      setAssignType(nextType);
+      setAssignDialogOpen(true);
+      setAssignEmployeeId('');
+    } else {
+      // For employee: move task to next stage, remove from their view, update stats
+      const updateData: Partial<Task> = {
+        taskType: nextType,
+        workflowStage: nextType,
+        status: 'pending',
+      };
+      if (nextType === 'delivery') {
+        updateData.dueDate = '';
+        updateData.dueTime = '';
+      }
+      try {
+        await taskService.update(task.$id, updateData);
+        toast({
+          title: "Task Updated",
+          description: `Task moved to ${nextType.charAt(0).toUpperCase() + nextType.slice(1)} stage and set to Pending.`,
+        });
+        // Remove from current employee's view
+        setTasks(prev => prev.filter(t => t.$id !== task.$id));
+        // Optionally update stats: increment completed for previous category
+        // (Assume you have a stats state, otherwise just reload tasks)
+        // await loadTasks(); // If you want to reload everything
+      } catch (error: any) {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to assign task",
+          variant: "destructive"
+        });
+      }
+    }
+  }, [user, toast]);
+
+  const handleAssignConfirm = async () => {
+    if (!assignTask || !assignType || !assignEmployeeId) return;
+    try {
+      const nextEmp = employees.find(emp => emp.$id === assignEmployeeId);
+      if (!nextEmp || !nextEmp.authUserId) throw new Error('Select a valid employee');
+      const updateData: Partial<Task> = {
+        taskType: assignType,
+        workflowStage: assignType,
+        assigneeId: nextEmp.authUserId,
+        assigneeName: nextEmp.name,
+        status: 'pending',
+        parentTaskId: assignTask.$id,
+      };
+      if (assignType === 'delivery') {
+        updateData.dueDate = '';
+        updateData.dueTime = '';
+      }
+      await taskService.update(assignTask.$id, updateData);
+      toast({
+        title: "Task Assigned",
+        description: `Task assigned to ${nextEmp.name}`,
+      });
+      setAssignDialogOpen(false);
+      setAssignTask(null);
+      setAssignType(null);
+      setAssignEmployeeId('');
+      // Remove from previous employee's view
+      setTasks(prev => prev.filter(t => t.$id !== assignTask.$id));
+      // Optionally update stats: increment completed for previous category
+      // await loadTasks(); // If you want to reload everything
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
         variant: "destructive"
       });
     }
@@ -442,6 +529,24 @@ export const Tasks: React.FC = () => {
 
   return (
     <div className="container mx-auto px-2 sm:px-4 py-4 space-y-6">
+      {/* Stats Filters */}
+      {(user?.role === 'Admin') && (
+        <div className="flex gap-2 mb-2">
+          <Label>Filter:</Label>
+          <Select
+            value={filter}
+            onValueChange={setFilter}
+            defaultValue="monthly"
+          >
+            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="weekly">Weekly</SelectItem>
+              <SelectItem value="monthly">Monthly</SelectItem>
+              <SelectItem value="yearly">Yearly</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Tasks</h1>
@@ -523,25 +628,30 @@ export const Tasks: React.FC = () => {
                         <SelectValue placeholder="Select employee" />
                       </SelectTrigger>
                       <SelectContent>
-                        {employees
-                          .filter(emp => {
-                            // Filter employees based on task type
-                            if (formData.taskType === 'designing') return emp.role === 'Graphic Designer';
-                            if (formData.taskType === 'printing') return emp.role === 'Printing Technician';
-                            if (formData.taskType === 'delivery') return emp.role === 'Delivery Supervisor';
-                            return emp.role != null;
-                          })
-                          .map(employee => (
-                          <SelectItem key={employee.$id} value={employee.$id}>
-                            <div className="flex flex-col">
-                              <span>{employee.name ?? ''} ({employee.role ?? ''})</span>
-                              <span className="text-xs text-gray-500">{employee.email}</span>
-                              <span className="text-xs text-blue-600">
-                                Pending: {employee.pendingTasks || 0} | In Progress: {employee.inProgressTasks || 0}
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))}
+                        {employees.length === 0 ? (
+                          <SelectItem value="" disabled>No employees found</SelectItem>
+                        ) : (
+                          employees
+                            .filter(emp => {
+                              if (formData.taskType === 'designing') return emp.role === 'Graphic Designer';
+                              if (formData.taskType === 'printing') return emp.role === 'Printing Technician';
+                              if (formData.taskType === 'delivery') return emp.role === 'Delivery Supervisor';
+                              return true;
+                            })
+                            .map(employee => (
+                              <SelectItem key={employee.$id} value={employee.$id}>
+                                <div className="flex flex-col">
+                                  <span>{employee.name ?? ''} ({employee.role ?? ''})</span>
+                                  <span className="text-xs text-gray-500">{employee.email}</span>
+                                  {typeof employee.pendingTasks !== 'undefined' && typeof employee.inProgressTasks !== 'undefined' && (
+                                    <span className="text-xs text-blue-600">
+                                      Pending: {employee.pendingTasks || 0} | In Progress: {employee.inProgressTasks || 0}
+                                    </span>
+                                  )}
+                                </div>
+                              </SelectItem>
+                            ))
+                        )}
                       </SelectContent>
                     </Select>
                     {employees.length === 0 && (
@@ -740,10 +850,10 @@ export const Tasks: React.FC = () => {
       <Card>
         <CardHeader>
           <CardTitle>
-            {user?.role === 'Admin' ? 'All Tasks' : 'My Tasks'}
+            {(user?.role === 'Admin' || user?.role === 'Manager') ? 'All Tasks' : 'My Tasks'}
           </CardTitle>
           <CardDescription>
-            {user?.role === 'Admin' 
+            {(user?.role === 'Admin' || user?.role === 'Manager')
               ? 'Manage all tasks across your organization'
               : 'Your assigned tasks and their current status'
             }
@@ -766,104 +876,124 @@ export const Tasks: React.FC = () => {
           ) : (
             <div className="w-full overflow-x-auto">
               <div className="min-w-[600px] sm:min-w-[800px]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-24 sm:w-auto">Order No</TableHead>
-                  <TableHead className="min-w-[200px] sm:min-w-0">Task</TableHead>
-                  {user?.role === 'Admin' && <TableHead className="w-32 sm:w-auto">Assignee</TableHead>}
-                  <TableHead className="w-24 sm:w-auto">Type</TableHead>
-                  <TableHead className="w-24 sm:w-auto">Priority</TableHead>
-                  <TableHead className="w-32 sm:w-auto">Due Date</TableHead>
-                  <TableHead className="w-24 sm:w-auto">Status</TableHead>
-                  <TableHead className="w-32 sm:w-auto">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tasks.map((task) => (
-                  <TableRow key={task.$id} className="min-h-[60px]">
-                    <TableCell>
-                      <span className="font-mono text-xs sm:text-sm">{task.orderNo || 'N/A'}</span>
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium text-sm sm:text-base">{task.title}</p>
-                        {task.description && (
-                          <p className="text-xs sm:text-sm text-gray-500 mt-1 truncate max-w-[200px] sm:max-w-none">{task.description}</p>
-                        )}
-                        {task.taskType === 'printing' && task.size && (
-                          <p className="text-xs text-blue-600 mt-1 truncate">
-                            Size: {task.size}
-                          </p>
-                        )}
-                        {task.fileUrl && (
-                          <a 
-                            href={task.fileUrl} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-xs text-blue-600 hover:underline mt-1 block hidden sm:inline"
-                          >
-                            📎 View Attached File
-                          </a>
-                        )}
-                        {task.customerPhone && (
-                          <p className="text-xs text-green-600 mt-1 truncate">
-                            📞 Customer: {task.customerPhone}
-                          </p>
-                        )}
-                      </div>
-                    </TableCell>
-                    {user?.role === 'Admin' && (
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-24 sm:w-auto">Order No</TableHead>
+                    <TableHead className="min-w-[200px] sm:min-w-0">Task</TableHead>
+                    {user?.role === 'Admin' && <TableHead className="w-32 sm:w-auto">Assignee</TableHead>}
+                    <TableHead className="w-24 sm:w-auto">Type</TableHead>
+                    <TableHead className="w-24 sm:w-auto">Priority</TableHead>
+                    <TableHead className="w-32 sm:w-auto">Due Date</TableHead>
+                    {/* New File Link column for Printing Tasks */}
+                    <TableHead className="w-32 sm:w-auto">File Link</TableHead>
+                    <TableHead className="w-24 sm:w-auto">Status</TableHead>
+                    <TableHead className="w-32 sm:w-auto">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tasks.map((task) => (
+                    <TableRow key={task.$id} className="min-h-[60px]">
                       <TableCell>
-                        <div className="flex items-center text-sm">
-                          <User className="h-4 w-4 mr-2 text-gray-400" />
-                          <span className="truncate max-w-[100px]">{task.assigneeName}</span>
-                        </div>
+                        <span className="font-mono text-xs sm:text-sm">{task.orderNo || task.$id.slice(-6).toUpperCase()}</span>
                       </TableCell>
-                    )}
-                    <TableCell>
-                      {task.taskType ? (
-                        <Badge variant="outline" className={`text-xs ${
-                          task.taskType === 'designing' ? 'border-blue-500 text-blue-700' :
-                          task.taskType === 'printing' ? 'border-green-500 text-green-700' :
-                          'border-orange-500 text-orange-700'
-                        }`}>
-                          {task.taskType.charAt(0).toUpperCase() + task.taskType.slice(1)}
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-xs">General</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={`text-xs ${getPriorityColor(task.priority || 'medium')}`}>
-                        {(task.priority || 'medium').charAt(0).toUpperCase() + (task.priority || 'medium').slice(1)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center text-sm">
-                        <Calendar className="h-3 w-3 mr-1 text-gray-400 hidden sm:block" />
-                        <div className={task.status === 'overdue' ? 'text-red-600 font-medium' : ''}>
-                          <div className="text-xs sm:text-sm whitespace-nowrap">{new Date(task.dueDate).toLocaleDateString()}</div>
-                          {task.dueTime && (
-                            <div className="text-xs text-gray-500 hidden sm:block">{task.dueTime}</div>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium text-sm sm:text-base">{task.title}</p>
+                          {task.description && (
+                            <p className="text-xs sm:text-sm text-gray-500 mt-1 truncate max-w-[200px] sm:max-w-none">{task.description}</p>
+                          )}
+                          {task.taskType === 'printing' && task.size && (
+                            <p className="text-xs text-blue-600 mt-1 truncate">
+                              Size: {task.size}
+                            </p>
+                          )}
+                          {task.fileUrl && (
+                            <a 
+                              href={task.fileUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:underline mt-1 block hidden sm:inline"
+                            >
+                              📎 View Attached File
+                            </a>
+                          )}
+                          {task.customerPhone && (
+                            <p className="text-xs text-green-600 mt-1 truncate">
+                              📞 Customer: {task.customerPhone}
+                            </p>
                           )}
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center text-sm">
-                        {getStatusIcon(task.status || 'pending')}
-                        <Badge className={`ml-1 text-xs ${getStatusColor(task.status || 'pending')}`}>
-                          {formatStatus(task.status || 'pending')}
+                      </TableCell>
+                      {user?.role === 'Admin' && (
+                        <TableCell>
+                          <div className="flex items-center text-sm">
+                            <User className="h-4 w-4 mr-2 text-gray-400" />
+                            <span className="truncate max-w-[100px]">{task.assigneeName}</span>
+                          </div>
+                        </TableCell>
+                      )}
+                      <TableCell>
+                        {task.taskType ? (
+                          <Badge variant="outline" className={`text-xs ${
+                            task.taskType === 'designing' ? 'border-blue-500 text-blue-700' :
+                            task.taskType === 'printing' ? 'border-green-500 text-green-700' :
+                            'border-orange-500 text-orange-700'
+                          }`}>
+                            {task.taskType.charAt(0).toUpperCase() + task.taskType.slice(1)}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs">General</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={`text-xs ${getPriorityColor(task.priority || 'medium')}`}>
+                          {(task.priority || 'medium').charAt(0).toUpperCase() + (task.priority || 'medium').slice(1)}
                         </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {user?.role !== 'Admin' && task.status !== 'completed' && (
-                        <div className="flex flex-col space-y-1 min-w-[120px]">
-                          {/* Show view details button for relevant task types */}
-                          {((user?.role === 'Printing Technician' && task.taskType === 'printing') ||
-                            (user?.role === 'Graphic Designer' && task.taskType === 'designing') ||
-                            (user?.role === 'Delivery Supervisor' && task.taskType === 'delivery')) && (
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center text-sm">
+                          <Calendar className="h-3 w-3 mr-1 text-gray-400 hidden sm:block" />
+                          <div className={task.status === 'overdue' ? 'text-red-600 font-medium' : ''}>
+                            <div className="text-xs sm:text-sm whitespace-nowrap">{new Date(task.dueDate).toLocaleDateString()}</div>
+                            {task.dueTime && (
+                              <div className="text-xs text-gray-500 hidden sm:block">{task.dueTime}</div>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center text-sm">
+                          {getStatusIcon(task.status || 'pending')}
+                          <Badge className={`ml-1 text-xs ${getStatusColor(task.status || 'pending')}`}>
+                            {formatStatus(task.status || 'pending')}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {/* Actions column logic */}
+                        {user?.role === 'Delivery Supervisor' ? (
+                          <Select
+                            value={task.status === 'delivered' ? 'delivered' : 'not-delivered'}
+                            // Fix: Only allow 'delivered' to be set, and map to correct status type
+                            onValueChange={(value) => {
+                              if (value === 'delivered') {
+                                updateTaskStatus(task.$id, 'delivered');
+                              } else {
+                                updateTaskStatus(task.$id, 'pending');
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="w-full sm:w-32 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="not-delivered">Not Delivered</SelectItem>
+                              <SelectItem value="delivered">Delivered</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <div className="flex flex-col space-y-1 min-w-[120px]">
+                            {/* View Details button for all roles */}
                             <Button
                               variant="outline"
                               size="sm"
@@ -872,95 +1002,113 @@ export const Tasks: React.FC = () => {
                             >
                               View Details
                             </Button>
-                          )}
-                          
-                          <div className="flex flex-col space-y-1">
-                            <Select
-                              value={task.status || 'pending'}
-                              onValueChange={(value: Task['status']) => updateTaskStatus(task.$id, value)}
-                            >
-                              <SelectTrigger className="w-full sm:w-32 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="in-progress">In Progress</SelectItem>
-                                <SelectItem value="completed">Completed</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            {/* Assign to Printing/Delivery buttons */}
+                            {task.status === 'completed' && (
+                              <>
+                                {task.taskType === 'designing' && (user?.role === 'Graphic Designer' || user?.role === 'Manager' || user?.role === 'Admin') && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-xs mb-1"
+                                    onClick={() => handleAssignWorkflow(task, 'printing')}
+                                  >
+                                    Assign to Printing
+                                  </Button>
+                                )}
+                                {task.taskType === 'printing' && (user?.role === 'Printing Technician' || user?.role === 'Manager' || user?.role === 'Admin') && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-xs mb-1"
+                                    onClick={() => handleAssignWorkflow(task, 'delivery')}
+                                  >
+                                    Assign to Delivery
+                                  </Button>
+                                )}
+                              </>
+                            )}
+                            {/* Status select for non-admin/non-delivery roles */}
+                            {/* {(user?.role !== 'Admin' && user?.role !== 'Manager' && user?.role !== 'Delivery Supervisor') && ( */}
+                            {(user?.role !== 'Admin' && user?.role !== 'Manager') && (
+                              
+
+
+                              
+                              <Select
+                                value={task.status || 'pending'}
+                                onValueChange={(value: Task['status']) => updateTaskStatus(task.$id, value)}
+                              >
+                                <SelectTrigger className="w-full sm:w-32 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pending">Pending</SelectItem>
+                                  <SelectItem value="in-progress">In Progress</SelectItem>
+                                  <SelectItem value="completed">Completed</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )}
+                            {/* Edit button for Admin/Manager and also for other roles for limited fields */}
+                            {(user?.role === 'Admin' || user?.role === 'Manager' ||
+                              user?.role === 'Graphic Designer' || user?.role === 'Printing Technician') && (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-xs mt-1"
+                                  onClick={() => handleEditTask(task)}
+                                >
+                                  Edit
+                                </Button>
+                                <Badge variant="outline" className="text-xs hidden lg:inline-flex">
+                                  Created by {task.createdBy}
+                                </Badge>
+                              </>
+                            )}
                           </div>
-                        </div>
-                      )}
-                      {user?.role === 'Admin' && (
-                        <div className="flex flex-col sm:flex-row space-y-1 sm:space-y-0 sm:space-x-2">
-                          <Button
-                            variant="outline"
-                            size="sm" 
-                            className="text-xs"
-                            onClick={() => handleEditTask(task)}
-                          >
-                            Edit
-                          </Button>
-                          <Badge variant="outline" className="text-xs hidden lg:inline-flex">
-                            Created by {task.createdBy}
-                          </Badge>
-                        </div>
-                      )}
-                      {user?.role === 'Manager' && (
-                        <div className="flex flex-col sm:flex-row space-y-1 sm:space-y-0 sm:space-x-2">
-                          <Button
-                            variant="outline"
-                            size="sm" 
-                            className="text-xs"
-                            onClick={() => handleEditTask(task)}
-                          >
-                            Edit
-                          </Button>
-                          <Badge variant="outline" className="text-xs hidden lg:inline-flex">
-                            Created by {task.createdBy}
-                          </Badge>
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-         
-                </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
               </div>
+            </div>
            
           )}
         </CardContent>
       </Card>
-
-      {/* Edit Task Dialog */}
+      {/* Edit Task Dialog - allow non-admins to edit limited fields */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="max-w-2xl w-full sm:w-auto max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Task</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleEditSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="editTitle">Task Title</Label>
-              <Input
-                id="editTitle"
-                value={formData.title}
-                onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                required
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="editDescription">Description</Label>
-              <Textarea
-                id="editDescription"
-                value={formData.description}
-                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                rows={3}
-              />
-            </div>
-            
-           <div className="grid grid-cols-2 gap-4">
+            {/* Only show editable fields for non-admins */}
+            {(user?.role === 'Admin' || user?.role === 'Manager') ? (
+              // ...existing full edit form...
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="editTitle">Task Title</Label>
+                  <Input
+                    id="editTitle"
+                    value={formData.title}
+                    onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                    required
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="editDescription">Description</Label>
+                  <Textarea
+                    id="editDescription"
+                    value={formData.description}
+                    onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                    rows={3}
+                  />
+                </div>
+                
+               <div className="grid grid-cols-2 gap-4">
   {/* Assignee Select */}
   <div className="space-y-2">
     <Label htmlFor="editAssignee">Assign To</Label>
@@ -972,11 +1120,22 @@ export const Tasks: React.FC = () => {
         <SelectValue placeholder="Select an employee" />
       </SelectTrigger>
       <SelectContent>
-        {employees.map(employee => (
-          <SelectItem key={employee.$id} value={employee.$id}>
-            {employee.name ?? ''} ({employee.role ?? ''})
-          </SelectItem>
-        ))}
+        {employees.length === 0 ? (
+          <SelectItem value="" disabled>No employees found</SelectItem>
+        ) : (
+          employees
+            .filter(emp => {
+              if (formData.taskType === 'designing') return emp.role === 'Graphic Designer';
+              if (formData.taskType === 'printing') return emp.role === 'Printing Technician';
+              if (formData.taskType === 'delivery') return emp.role === 'Delivery Supervisor';
+              return true;
+            })
+            .map(employee => (
+              <SelectItem key={employee.$id} value={employee.$id}>
+                {employee.name ?? ''} ({employee.role ?? ''})
+              </SelectItem>
+            ))
+        )}
       </SelectContent>
     </Select>
   </div>
@@ -1058,124 +1217,240 @@ export const Tasks: React.FC = () => {
                 </div>
       
               )}
-            <div className="flex justify-end space-x-2 pt-4">
-              <Button type="button" variant="outline" onClick={() => {
-                setIsEditDialogOpen(false);
-                setEditingTask(null);
-                resetForm();
-              }}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Updating...
-                  </>
-                ) : (
-                  'Update Task'
-                )}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Task Detail Modal */}
-      <TaskDetailDialog open={isTaskDetailOpen} onOpenChange={setIsTaskDetailOpen}>
-        <TaskDetailDialogContent className="max-w-2xl w-full sm:w-auto">
-          <TaskDetailDialogHeader>
-            <TaskDetailDialogTitle>Task Details</TaskDetailDialogTitle>
-          </TaskDetailDialogHeader>
-          {selectedTaskDetail && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-medium">Task Title</Label>
-                  <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.title}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Task Type</Label>
-                  <p className="text-sm text-gray-700 mt-1 capitalize">{selectedTaskDetail.taskType}</p>
-                </div>
+            </>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="editFileUrl">File/Google Drive Link</Label>
+                <Input
+                  id="editFileUrl"
+                  type="url"
+                  value={formData.fileUrl}
+                  onChange={(e) => setFormData(prev => ({ ...prev, fileUrl: e.target.value }))}
+                  placeholder="https://drive.google.com/..."
+                />
               </div>
-              
-              <div>
-                <Label className="text-sm font-medium">Description</Label>
-                <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.description || 'No description provided'}</p>
+              <div className="space-y-2">
+                <Label htmlFor="editCustomerPhone">Customer Phone Number</Label>
+                <Input
+                  id="editCustomerPhone"
+                  value={formData.customerPhone}
+                  onChange={(e) => setFormData(prev => ({ ...prev, customerPhone: e.target.value }))}
+                  placeholder="Enter customer number"
+                />
               </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-medium">Due Date</Label>
-                  <p className="text-sm text-gray-700 mt-1">{new Date(selectedTaskDetail.dueDate).toLocaleDateString()}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Priority</Label>
-                  <Badge className={`mt-1 ${getPriorityColor(selectedTaskDetail.priority || 'medium')}`}>
-                    {(selectedTaskDetail.priority || 'medium').charAt(0).toUpperCase() + (selectedTaskDetail.priority || 'medium').slice(1)}
-                  </Badge>
-                </div>
-              </div>
-              
-              {selectedTaskDetail.taskType === 'printing' && (
+              {/* Only allow editing printing details for Printing Technician */}
+              {user?.role === 'Printing Technician' && formData.taskType === 'printing' && (
                 <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
-                  <h4 className="font-medium">Printing Specifications</h4>
+                  <h4 className="font-medium">Printing Details</h4>
                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-sm font-medium">Size</Label>
-                      <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.size || 'Not specified'}</p>
+                    <div className="space-y-2">
+                      <Label htmlFor="editSize">Size</Label>
+                      <Input
+                        id="editSize"
+                        value={formData.size}
+                        onChange={(e) => setFormData(prev => ({ ...prev, size: e.target.value }))}
+                        placeholder="e.g., A4, A3, Custom"
+                      />
                     </div>
-                    <div>
-                      <Label className="text-sm font-medium">Material</Label>
-                      <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.material || 'Not specified'}</p>
+                    <div className="space-y-2">
+                      <Label htmlFor="editMaterial">Material</Label>
+                      <Input
+                        id="editMaterial"
+                        value={formData.material}
+                        onChange={(e) => setFormData(prev => ({ ...prev, material: e.target.value }))}
+                        placeholder="e.g., Paper, Vinyl, Canvas"
+                      />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-sm font-medium">Printing Type</Label>
-                      <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.printingType || 'Not specified'}</p>
+                    <div className="space-y-2">
+                      <Label htmlFor="editPrintingType">Type of Printing</Label>
+                      <Input
+                        id="editPrintingType"
+                        value={formData.printingType}
+                        onChange={(e) => setFormData(prev => ({ ...prev, printingType: e.target.value }))}
+                        placeholder="e.g., Digital, Offset, Screen"
+                      />
                     </div>
-                    <div>
-                      <Label className="text-sm font-medium">Lamination Type</Label>
-                      <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.laminationType || 'Not specified'}</p>
+                    <div className="space-y-2">
+                      <Label htmlFor="editLaminationType">Type of Lamination</Label>
+                      <Input
+                        id="editLaminationType"
+                        value={formData.laminationType}
+                        onChange={(e) => setFormData(prev => ({ ...prev, laminationType: e.target.value }))}
+                        placeholder="e.g., Matte, Glossy, UV Coating"
+                      />
                     </div>
                   </div>
                 </div>
               )}
-              
-              {selectedTaskDetail.fileUrl && (
-                <div>
-                  <Label className="text-sm font-medium">Attached File</Label>
-                  <div className="mt-1">
-                    <a 
-                      href={selectedTaskDetail.fileUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline text-sm"
-                    >
-                      📎 View Attached File
-                    </a>
-                  </div>
-                </div>
+            </>
+          )}
+          <div className="flex justify-end space-x-2 pt-4">
+            <Button type="button" variant="outline" onClick={() => {
+              setIsEditDialogOpen(false);
+              setEditingTask(null);
+              resetForm();
+            }}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                'Update Task'
               )}
-              
-              {selectedTaskDetail.customerPhone && (
-                <div>
-                  <Label className="text-sm font-medium">Customer Contact</Label>
-                  <p className="text-sm text-gray-700 mt-1">📞 {selectedTaskDetail.customerPhone}</p>
-                </div>
-              )}
-              
-              <div className="flex justify-end pt-4">
-                <Button onClick={() => setIsTaskDetailOpen(false)}>
-                  Close
-                </Button>
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+
+    {/* Task Detail Modal */}
+    <TaskDetailDialog open={isTaskDetailOpen} onOpenChange={setIsTaskDetailOpen}>
+      <TaskDetailDialogContent className="max-w-2xl w-full sm:w-auto">
+        <TaskDetailDialogHeader>
+          <TaskDetailDialogTitle>Task Details</TaskDetailDialogTitle>
+        </TaskDetailDialogHeader>
+        {selectedTaskDetail && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-sm font-medium">Task Title</Label>
+                <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.title}</p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Task Type</Label>
+                <p className="text-sm text-gray-700 mt-1 capitalize">{selectedTaskDetail.taskType}</p>
               </div>
             </div>
-          )}
-        </TaskDetailDialogContent>
-      </TaskDetailDialog>
+            
+            <div>
+              <Label className="text-sm font-medium">Description</Label>
+              <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.description || 'No description provided'}</p>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-sm font-medium">Due Date</Label>
+                <p className="text-sm text-gray-700 mt-1">{new Date(selectedTaskDetail.dueDate).toLocaleDateString()}</p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Priority</Label>
+                <Badge className={`mt-1 ${getPriorityColor(selectedTaskDetail.priority || 'medium')}`}>
+                  {(selectedTaskDetail.priority || 'medium').charAt(0).toUpperCase() + (selectedTaskDetail.priority || 'medium').slice(1)}
+                </Badge>
+              </div>
+            </div>
+            
+            {selectedTaskDetail.taskType === 'printing' && (
+              <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
+                <h4 className="font-medium">Printing Specifications</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium">Size</Label>
+                    <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.size || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Material</Label>
+                    <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.material || 'Not specified'}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium">Printing Type</Label>
+                    <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.printingType || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Lamination Type</Label>
+                    <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.laminationType || 'Not specified'}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {selectedTaskDetail.fileUrl && (
+              <div>
+                <Label className="text-sm font-medium">Attached File</Label>
+                <div className="mt-1">
+                  <a 
+                    href={selectedTaskDetail.fileUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline text-sm"
+                  >
+                    📎 View Attached File
+                  </a>
+                </div>
+              </div>
+            )}
+            
+            {selectedTaskDetail.customerPhone && (
+              <div>
+                <Label className="text-sm font-medium">Customer Contact</Label>
+                <p className="text-sm text-gray-700 mt-1">📞 {selectedTaskDetail.customerPhone}</p>
+              </div>
+            )}
+            
+            <div className="flex justify-end pt-4">
+              <Button onClick={() => setIsTaskDetailOpen(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+      </TaskDetailDialogContent>
+    </TaskDetailDialog>
+
+    {/* Assign Workflow Dialog */}
+    <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            Assign to {assignType === 'printing' ? 'Printing Technician' : 'Delivery Supervisor'}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <Label>Select Employee</Label>
+          <Select
+            value={assignEmployeeId}
+            onValueChange={setAssignEmployeeId}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select employee" />
+            </SelectTrigger>
+            <SelectContent>
+              {employees
+                .filter(emp =>
+                  assignType === 'printing'
+                    ? emp.role === 'Printing Technician'
+                    : emp.role === 'Delivery Supervisor'
+                )
+                .map(emp => (
+                  <SelectItem key={emp.$id} value={emp.$id}>
+                    {emp.name} ({emp.email})
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+          <div className="flex justify-end space-x-2 pt-4">
+            <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAssignConfirm}
+              disabled={!assignEmployeeId}
+            >
+              Assign
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
     </div>
   );
 };

@@ -117,7 +117,7 @@ export const Salary: React.FC = () => {
   const lastPaidSalary = salaryHistory.find(s => s.status === 'Paid');
 
   const formatSalaryAmount = (amount: number) => {
-    if (user?.role === 'Admin') {
+    if (user?.role === 'Admin' || user?.role === 'Manager') {
       return `₹${amount.toLocaleString()}`;
     }
     return '••••';
