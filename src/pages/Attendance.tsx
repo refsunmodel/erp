@@ -31,22 +31,17 @@ interface Employee {
   authUserId: string;
 }
 
-interface LaminationType {
-  $id: string;
-  name: string;
-  isActive: boolean;
-}
 
 export const Attendance: React.FC = () => {
   const { user } = useAuth();
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [laminationTypes, setLaminationTypes] = useState<LaminationType[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [isMarkDialogOpen, setIsMarkDialogOpen] = useState(false);
-  const [isLaminationDialogOpen, setIsLaminationDialogOpen] = useState(false);
+ 
   const [submitting, setSubmitting] = useState(false);
   const { toast } = useToast();
 
@@ -56,10 +51,7 @@ export const Attendance: React.FC = () => {
     dayType: 'Full Day' as AttendanceRecord['dayType']
   });
 
-  const [laminationData, setLaminationData] = useState({
-    name: ''
-  });
-
+ 
   useEffect(() => {
     loadData();
   }, [selectedDate]);
@@ -67,7 +59,7 @@ export const Attendance: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [attendanceResponse, employeesResponse, laminationResponse] = await Promise.all([
+      const [attendanceResponse, employeesResponse] = await Promise.all([
         attendanceService.list(undefined, selectedDate, undefined),
         employeeService.list(),
         laminationService.list()
@@ -84,7 +76,7 @@ export const Attendance: React.FC = () => {
 
       setAttendanceRecords(attendanceResponse.documents as unknown as AttendanceRecord[]);
       setEmployees(filteredEmployees as unknown as Employee[]);
-      setLaminationTypes(laminationResponse.documents as unknown as LaminationType[]);
+     
     } catch (error: any) {
       toast({
         title: "Error",
@@ -156,34 +148,7 @@ export const Attendance: React.FC = () => {
     }
   };
 
-  const handleAddLaminationType = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
 
-    try {
-      await laminationService.create({
-        name: laminationData.name,
-        isActive: true
-      });
-
-      toast({
-        title: "Lamination Type Added",
-        description: `${laminationData.name} has been added to the list`,
-      });
-
-      await loadData();
-      setIsLaminationDialogOpen(false);
-      setLaminationData({ name: '' });
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to add lamination type",
-        variant: "destructive"
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const getAttendanceForEmployee = (employeeId: string) => {
     return attendanceRecords.find(record => record.employeeId === employeeId);
@@ -217,42 +182,7 @@ export const Attendance: React.FC = () => {
         </div>
         
         <div className="flex space-x-2">
-          {user?.role === 'Admin' && (
-            <Dialog open={isLaminationDialogOpen} onOpenChange={setIsLaminationDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Lamination Type
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add Lamination Type</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleAddLaminationType} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="laminationName">Lamination Type Name</Label>
-                    <Input
-                      id="laminationName"
-                      value={laminationData.name}
-                      onChange={(e) => setLaminationData({ name: e.target.value })}
-                      required
-                      placeholder="e.g., Matte, Glossy, UV Coating"
-                    />
-                  </div>
-                  <div className="flex justify-end space-x-2">
-                    <Button type="button" variant="outline" onClick={() => setIsLaminationDialogOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={submitting}>
-                      {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                      Add Type
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
-          )}
+         
           
           <Dialog open={isMarkDialogOpen} onOpenChange={setIsMarkDialogOpen}>
             <DialogTrigger asChild>
@@ -497,29 +427,7 @@ export const Attendance: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Lamination Types Management */}
-      {user?.role === 'Admin' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Lamination Types</CardTitle>
-            <CardDescription>Manage available lamination options for printing tasks</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {laminationTypes.map((type) => (
-                <div key={type.$id} className="p-3 border rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{type.name}</span>
-                    <Badge variant={type.isActive ? 'default' : 'secondary'}>
-                      {type.isActive ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+    
     </div>
   );
 };
