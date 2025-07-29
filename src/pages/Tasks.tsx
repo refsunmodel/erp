@@ -643,11 +643,11 @@ export const Tasks: React.FC = () => {
                                 <div className="flex flex-col">
                                   <span>{employee.name ?? ''} ({employee.role ?? ''})</span>
                                   <span className="text-xs text-gray-500">{employee.email}</span>
-                                  {typeof employee.pendingTasks !== 'undefined' && typeof employee.inProgressTasks !== 'undefined' && (
+                                  {/* {typeof employee.pendingTasks !== 'undefined' && typeof employee.inProgressTasks !== 'undefined' && ( */}
                                     <span className="text-xs text-blue-600">
                                       Pending: {employee.pendingTasks || 0} | In Progress: {employee.inProgressTasks || 0}
                                     </span>
-                                  )}
+                                  {/* )} */}
                                 </div>
                               </SelectItem>
                             ))
