@@ -35,6 +35,8 @@ const menuItems = {
     { title: 'Attendance', href: '/attendance', icon: Calendar },
     { title: 'Stats & Trends', href: '/stats', icon: TrendingUp },
     { title: 'Chat', href: '/chat', icon: MessageCircle },
+    { title: 'Salary Info', href: '/salary', icon: DollarSign },
+
   ],
   'Graphic Designer': [
     { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
