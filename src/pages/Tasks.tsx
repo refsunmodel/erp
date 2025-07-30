@@ -24,7 +24,7 @@ interface Task {
   assigneeName: string;
   dueDate: string;
   dueTime?: string;
-  status: 'pending' | 'in-progress' | 'completed' | 'overdue' | 'delivered'; // <-- add 'delivered'
+  status: 'pending' | 'in-progress' | 'completed' | 'overdue' |  'delivered' |'not-delivered';
   priority: 'low' | 'medium' | 'high';
   createdBy: string;
   fileUrl?: string;
@@ -87,7 +87,7 @@ export const Tasks: React.FC = () => {
 
   useEffect(() => {
     loadTasks();
-    if (user?.role === 'Admin' || user?.role === 'Manager') {
+    if (user?.role === 'Admin' || user?.role === 'Manager' || user?.role === 'Delivery Supervisor' || user?.role === 'Printing Technician' || user?.role === 'Graphic Designer') {
       loadEmployees();
     }
   }, [user]);
@@ -96,7 +96,7 @@ export const Tasks: React.FC = () => {
     try {
       setLoading(true);
       let response;
-      if (user?.role === 'Admin' || user?.role === 'Manager') { // <-- allow Manager to see all tasks
+      if (user?.role === 'Admin') {
         response = await taskService.list();
       } else {
         response = await taskService.getByAssignee(user?.$id || '');
@@ -127,11 +127,15 @@ export const Tasks: React.FC = () => {
     }
   };
 
-  // Remove role filtering from loadEmployees, always load all employees with authUserId
   const loadEmployees = async () => {
     try {
       const response = await employeeService.list();
-      const validEmployees = response.documents.filter((emp: any) => emp.authUserId);
+      // Filter out employees that don't have authUserId
+      // Fix: Also filter by role relevant to current user for employee dropdowns
+      let validEmployees = response.documents.filter((emp: any) => emp.authUserId);
+
+    
+
       setEmployees(validEmployees as unknown as Employee[]);
     } catch (error: any) {
       console.error('Failed to load employees:', error);
@@ -218,7 +222,7 @@ export const Tasks: React.FC = () => {
       // Update the task status
       await taskService.update(taskId, { status: newStatus });
       
-      // Fix: Only check for 'delivered' if status is 'delivered'
+      // If delivered, remove from list for Delivery Supervisor
       if (newStatus === 'delivered' && user?.role === 'Delivery Supervisor') {
         setTasks(prev => prev.filter(t => t.$id !== taskId));
       }
@@ -316,43 +320,12 @@ export const Tasks: React.FC = () => {
     }
   };
 
-  const handleAssignWorkflow = useCallback(async (task: Task, nextType: 'printing' | 'delivery') => {
-    if (user?.role === 'Admin' || user?.role === 'Manager') {
-      setAssignTask(task);
-      setAssignType(nextType);
-      setAssignDialogOpen(true);
-      setAssignEmployeeId('');
-    } else {
-      // For employee: move task to next stage, remove from their view, update stats
-      const updateData: Partial<Task> = {
-        taskType: nextType,
-        workflowStage: nextType,
-        status: 'pending',
-      };
-      if (nextType === 'delivery') {
-        updateData.dueDate = '';
-        updateData.dueTime = '';
-      }
-      try {
-        await taskService.update(task.$id, updateData);
-        toast({
-          title: "Task Updated",
-          description: `Task moved to ${nextType.charAt(0).toUpperCase() + nextType.slice(1)} stage and set to Pending.`,
-        });
-        // Remove from current employee's view
-        setTasks(prev => prev.filter(t => t.$id !== task.$id));
-        // Optionally update stats: increment completed for previous category
-        // (Assume you have a stats state, otherwise just reload tasks)
-        // await loadTasks(); // If you want to reload everything
-      } catch (error: any) {
-        toast({
-          title: "Error",
-          description: error.message || "Failed to assign task",
-          variant: "destructive"
-        });
-      }
-    }
-  }, [user, toast]);
+  const handleAssignWorkflow = useCallback((task: Task, nextType: 'printing' | 'delivery') => {
+    setAssignTask(task);
+    setAssignType(nextType);
+    setAssignDialogOpen(true);
+    setAssignEmployeeId('');
+  }, []);
 
   const handleAssignConfirm = async () => {
     if (!assignTask || !assignType || !assignEmployeeId) return;
@@ -380,10 +353,7 @@ export const Tasks: React.FC = () => {
       setAssignTask(null);
       setAssignType(null);
       setAssignEmployeeId('');
-      // Remove from previous employee's view
-      setTasks(prev => prev.filter(t => t.$id !== assignTask.$id));
-      // Optionally update stats: increment completed for previous category
-      // await loadTasks(); // If you want to reload everything
+      await loadTasks();
     } catch (error: any) {
       toast({
         title: "Error",
@@ -631,26 +601,19 @@ export const Tasks: React.FC = () => {
                         {employees.length === 0 ? (
                           <SelectItem value="" disabled>No employees found</SelectItem>
                         ) : (
-                          employees
-                            .filter(emp => {
-                              if (formData.taskType === 'designing') return emp.role === 'Graphic Designer';
-                              if (formData.taskType === 'printing') return emp.role === 'Printing Technician';
-                              if (formData.taskType === 'delivery') return emp.role === 'Delivery Supervisor';
-                              return true;
-                            })
-                            .map(employee => (
-                              <SelectItem key={employee.$id} value={employee.$id}>
-                                <div className="flex flex-col">
-                                  <span>{employee.name ?? ''} ({employee.role ?? ''})</span>
-                                  <span className="text-xs text-gray-500">{employee.email}</span>
-                                  {/* {typeof employee.pendingTasks !== 'undefined' && typeof employee.inProgressTasks !== 'undefined' && ( */}
-                                    <span className="text-xs text-blue-600">
-                                      Pending: {employee.pendingTasks || 0} | In Progress: {employee.inProgressTasks || 0}
-                                    </span>
-                                  {/* )} */}
-                                </div>
-                              </SelectItem>
-                            ))
+                          employees.map(employee => (
+                            <SelectItem key={employee.$id} value={employee.$id}>
+                              <div className="flex flex-col">
+                                <span>{employee.name ?? ''} ({employee.role ?? ''})</span>
+                                <span className="text-xs text-gray-500">{employee.email}</span>
+                                {typeof employee.pendingTasks !== 'undefined' && typeof employee.inProgressTasks !== 'undefined' && (
+                                  <span className="text-xs text-blue-600">
+                                    Pending: {employee.pendingTasks || 0} | In Progress: {employee.inProgressTasks || 0}
+                                  </span>
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))
                         )}
                       </SelectContent>
                     </Select>
@@ -850,10 +813,10 @@ export const Tasks: React.FC = () => {
       <Card>
         <CardHeader>
           <CardTitle>
-            {(user?.role === 'Admin' || user?.role === 'Manager') ? 'All Tasks' : 'My Tasks'}
+            {user?.role === 'Admin' ? 'All Tasks' : 'My Tasks'}
           </CardTitle>
           <CardDescription>
-            {(user?.role === 'Admin' || user?.role === 'Manager')
+            {user?.role === 'Admin' 
               ? 'Manage all tasks across your organization'
               : 'Your assigned tasks and their current status'
             }
@@ -974,14 +937,7 @@ export const Tasks: React.FC = () => {
                         {user?.role === 'Delivery Supervisor' ? (
                           <Select
                             value={task.status === 'delivered' ? 'delivered' : 'not-delivered'}
-                            // Fix: Only allow 'delivered' to be set, and map to correct status type
-                            onValueChange={(value) => {
-                              if (value === 'delivered') {
-                                updateTaskStatus(task.$id, 'delivered');
-                              } else {
-                                updateTaskStatus(task.$id, 'pending');
-                              }
-                            }}
+                            onValueChange={(value) => updateTaskStatus(task.$id, value === 'delivered' ? 'delivered' : 'not-delivered')}
                           >
                             <SelectTrigger className="w-full sm:w-32 text-xs">
                               <SelectValue />
@@ -1028,12 +984,9 @@ export const Tasks: React.FC = () => {
                               </>
                             )}
                             {/* Status select for non-admin/non-delivery roles */}
-                            {/* {(user?.role !== 'Admin' && user?.role !== 'Manager' && user?.role !== 'Delivery Supervisor') && ( */}
-                            {(user?.role !== 'Admin' && user?.role !== 'Manager') && (
-                              
+                            {/* {(user?.role !== 'Admin' && user?.role !== 'Delivery Supervisor') && ( */}
+                            {(user?.role !== 'Admin') && (
 
-
-                              
                               <Select
                                 value={task.status || 'pending'}
                                 onValueChange={(value: Task['status']) => updateTaskStatus(task.$id, value)}
@@ -1123,18 +1076,11 @@ export const Tasks: React.FC = () => {
         {employees.length === 0 ? (
           <SelectItem value="" disabled>No employees found</SelectItem>
         ) : (
-          employees
-            .filter(emp => {
-              if (formData.taskType === 'designing') return emp.role === 'Graphic Designer';
-              if (formData.taskType === 'printing') return emp.role === 'Printing Technician';
-              if (formData.taskType === 'delivery') return emp.role === 'Delivery Supervisor';
-              return true;
-            })
-            .map(employee => (
-              <SelectItem key={employee.$id} value={employee.$id}>
-                {employee.name ?? ''} ({employee.role ?? ''})
-              </SelectItem>
-            ))
+          employees.map(employee => (
+            <SelectItem key={employee.$id} value={employee.$id}>
+              {employee.name ?? ''} ({employee.role ?? ''})
+            </SelectItem>
+          ))
         )}
       </SelectContent>
     </Select>
@@ -1425,10 +1371,9 @@ export const Tasks: React.FC = () => {
             </SelectTrigger>
             <SelectContent>
               {employees
-                .filter(emp =>
-                  assignType === 'printing'
-                    ? emp.role === 'Printing Technician'
-                    : emp.role === 'Delivery Supervisor'
+                .filter(emp => assignType === 'printing'
+                  ? emp.role === 'Printing Technician'
+                  : emp.role === 'Delivery Supervisor'
                 )
                 .map(emp => (
                   <SelectItem key={emp.$id} value={emp.$id}>
