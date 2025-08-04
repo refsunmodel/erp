@@ -61,7 +61,7 @@ const AppRoutes = () => {
       )}
       
       {/* Employee Routes - Graphic Designer, Printing Technician, Delivery Supervisor */}
-      {(user.role === 'Graphic Designer' || user.role === 'Printing Technician' || user.role === 'Delivery Supervisor') && (
+      {(user.role === 'Graphic Designer' || user.role === 'Printing Technician' || user.role === 'Delivery Supervisor' || user.role === 'Manager') && (
         <>
           <Route path="/salary" element={<Salary />} />
         </>

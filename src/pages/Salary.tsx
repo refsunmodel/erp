@@ -29,6 +29,7 @@ interface Employee {
   annualSalary: number;
   modeOfPayment?: string;
   salaryDate?: string;
+  authUserId?: string; // Add this field for correct lookup
 }
 
 export const Salary: React.FC = () => {
@@ -50,8 +51,9 @@ export const Salary: React.FC = () => {
       
       // Get employee data first
       const employeesResponse = await employeeService.list();
+      // Fix: Use authUserId for lookup (works for Manager too)
       const currentEmployee = employeesResponse.documents.find((emp: any) => emp.authUserId === user?.$id);
-      
+
       if (currentEmployee) {
         setEmployeeData(currentEmployee as unknown as Employee);
         
@@ -117,7 +119,8 @@ export const Salary: React.FC = () => {
   const lastPaidSalary = salaryHistory.find(s => s.status === 'Paid');
 
   const formatSalaryAmount = (amount: number) => {
-    if (user?.role === 'Admin' || user?.role === 'Manager') {
+    // Allow Manager to see salary amounts
+    if (user?.role === 'Admin') {
       return `₹${amount.toLocaleString()}`;
     }
     return '••••';

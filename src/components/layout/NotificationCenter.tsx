@@ -284,7 +284,7 @@ export const NotificationCenter: React.FC = () => {
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80">
+      <DropdownMenuContent align="end" className="w-80" style={{ maxHeight: 400, overflowY: 'auto' }}>
         <DropdownMenuLabel className="flex items-center gap-2">
           <Bell className="h-4 w-4" />
           Notifications
