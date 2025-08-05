@@ -79,6 +79,8 @@ export const Tasks: React.FC = () => {
     printingType: ''
   });
 
+  const [searchTerm, setSearchTerm] = useState(""); // <-- Add search state
+
   // Add canCreateTask logic
   // Admin, Manager, and Graphic Designer can create tasks
   const canCreateTask =
@@ -103,7 +105,7 @@ export const Tasks: React.FC = () => {
       setFormData(prev => ({
         ...prev,
         taskType: 'printing',
-      // Only allow self-assignment
+        assigneeId: user.$id // Only allow self-assignment
       }));
     }
   }, [user]);
@@ -554,7 +556,18 @@ export const Tasks: React.FC = () => {
   }
 
   // Filtered tasks for display
-  const filteredTasks = filterTasksByDate(tasks);
+  const filteredTasks = filterTasksByDate(tasks)
+    .filter(task => {
+      if (!searchTerm.trim()) return true;
+      const term = searchTerm.trim().toLowerCase();
+      return (
+        (task.orderNo || "").toLowerCase().includes(term) ||
+        (task.title || "").toLowerCase().includes(term) ||
+        (task.assigneeName || "").toLowerCase().includes(term) ||
+        (task.description || "").toLowerCase().includes(term) ||
+        (task.customerPhone || "").toLowerCase().includes(term)
+      );
+    });
 
   return (
     <div className="container mx-auto px-2 sm:px-4 py-4 space-y-6">
@@ -577,6 +590,18 @@ export const Tasks: React.FC = () => {
           </Select>
         </div>
       )}
+
+      {/* Search Bar */}
+      <div className="flex items-center gap-2 mb-4">
+        <Input
+          type="text"
+          placeholder="Search by Order No, Title, Assignee, Description, Customer..."
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          className="max-w-md"
+        />
+      </div>
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Tasks</h1>
@@ -639,27 +664,32 @@ export const Tasks: React.FC = () => {
                     <Select
                       value={formData.taskType}
                       onValueChange={(value: string) => setFormData(prev => ({ ...prev, taskType: value as Task['taskType'] }))}
-                    
+                      disabled={user?.role === 'Graphic Designer'}
                     >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                       
+                        {(user?.role === 'Graphic Designer') ? (
+                          <SelectItem value="printing">Printing Task</SelectItem>
+                        ) : (
+                          <>
                             <SelectItem value="designing">Designing Task</SelectItem>
                             <SelectItem value="printing">Printing Task</SelectItem>
                             <SelectItem value="delivery">Delivery Task</SelectItem>
-                        
+                          </>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
-                  {/* Assignee: Designer can only assign to self */}
+                  {/* Assignee: Show filtered list for all roles, restrict to self for printing if designer */}
                   <div className="space-y-2">
                     <Label htmlFor="assignee">Assign To</Label>
                     <Select
                       value={formData.assigneeId}
                       onValueChange={(value) => setFormData(prev => ({ ...prev, assigneeId: value }))}
-                   
+                      // Only disable for designer+printing if you want to restrict assignment to self
+                     
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select employee" />
@@ -667,14 +697,14 @@ export const Tasks: React.FC = () => {
                       <SelectContent>
                         {employees
                           .filter(emp => {
-                            if (user?.role === 'Graphic Designer') {
-                              return emp.$id === user.$id;
-                            }
+                            // Filter by task type for all roles
                             if (formData.taskType === 'designing') return emp.role === 'Graphic Designer';
                             if (formData.taskType === 'printing') return emp.role === 'Printing Technician';
                             if (formData.taskType === 'delivery') return emp.role === 'Delivery Supervisor';
                             return true;
                           })
+                          // Only restrict to self for designer+printing if you want to enforce that
+                         
                           .map(employee => (
                             <SelectItem key={employee.$id} value={employee.$id}>
                               <div className="flex flex-col">
@@ -850,7 +880,6 @@ export const Tasks: React.FC = () => {
                           {task.description && (
                             <p className="text-xs sm:text-sm text-gray-500 mt-1 truncate max-w-[200px] sm:max-w-none">{task.description}</p>
                           )}
-                         
                           {task.fileUrl && (
                             <a 
                               href={task.fileUrl} 

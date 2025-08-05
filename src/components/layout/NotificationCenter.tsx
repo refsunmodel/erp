@@ -22,6 +22,8 @@ interface SalaryNotification {
   role: string;
   salaryDate: string;
   presentDays: number;
+  absentDays: number;
+  halfDays: number;
   totalDays: number;
   type: 'salary';
 }
@@ -80,8 +82,6 @@ export const NotificationCenter: React.FC = () => {
     try {
       setLoading(true);
       const currentDate = new Date();
-      const currentDay = currentDate.getDate();
-      const currentMonth = currentDate.toISOString().slice(0, 7);
       
       const allNotifications: Notification[] = [];
 
@@ -89,36 +89,53 @@ export const NotificationCenter: React.FC = () => {
       if (user?.role === 'Admin') {
         const [employeesResponse, attendanceResponse] = await Promise.all([
           employeeService.list(),
-          attendanceService.list(undefined, undefined, currentMonth)
+          attendanceService.list()
         ]);
 
         const salaryNotifications: SalaryNotification[] = [];
-        
+        const currentDateObj = new Date();
+
         for (const employee of employeesResponse.documents) {
-          // Check if salary is due (within 3 days of salary date)
           if (employee.salaryDate) {
             const salaryDay = parseInt(employee.salaryDate);
-            const daysDifference = Math.abs(currentDay - salaryDay);
-            
-            if (daysDifference <= 3 || (salaryDay > 28 && currentDay <= 3)) { // Handle month-end cases
-            const employeeAttendance = attendanceResponse.documents.filter(
-              (att: any) => att.employeeId === employee.$id
-            );
-            const presentDays = employeeAttendance.filter((att: any) => att.status === 'Present').length;
-            
-            salaryNotifications.push({
-              $id: employee.$id,
-              name: employee.name,
-              role: employee.role,
-              salaryDate: employee.salaryDate,
-              presentDays,
-              totalDays: employeeAttendance.length,
-              type: 'salary'
+            // Find current and previous salary date window
+            const now = new Date();
+            let currentSalaryDate = new Date(now.getFullYear(), now.getMonth(), salaryDay);
+            if (now < currentSalaryDate) {
+              // If today is before this month's salary date, use previous month
+              currentSalaryDate = new Date(now.getFullYear(), now.getMonth() - 1, salaryDay);
+            }
+            let prevSalaryDate = new Date(currentSalaryDate);
+            prevSalaryDate.setMonth(currentSalaryDate.getMonth() - 1);
+
+            // Attendance window: prevSalaryDate (exclusive) to currentSalaryDate (inclusive)
+            const attendanceWindow = attendanceResponse.documents.filter((att: any) => {
+              if (att.employeeId !== employee.$id) return false;
+              const attDate = new Date(att.date);
+              return attDate > prevSalaryDate && attDate <= currentSalaryDate;
             });
+
+            const presentDays = attendanceWindow.filter((att: any) => att.status === 'Present').length;
+            const absentDays = attendanceWindow.filter((att: any) => att.status === 'Absent').length;
+            const halfDays = attendanceWindow.filter((att: any) => att.status === 'Half Day').length;
+
+            // Show notification if salary due (within 3 days of salary date)
+            const daysDifference = Math.abs(currentDateObj.getDate() - salaryDay);
+            if (daysDifference <= 3 || (salaryDay > 28 && currentDateObj.getDate() <= 3)) {
+              salaryNotifications.push({
+                $id: employee.$id,
+                name: employee.name,
+                role: employee.role,
+                salaryDate: employee.salaryDate,
+                presentDays,
+                absentDays,
+                halfDays,
+                totalDays: attendanceWindow.length,
+                type: 'salary'
+              } as any);
             }
           }
         }
-        
         allNotifications.push(...salaryNotifications);
       }
 
@@ -252,10 +269,6 @@ export const NotificationCenter: React.FC = () => {
     });
   };
 
-  const getAttendancePercentage = (present: number, total: number) => {
-    return total > 0 ? Math.round((present / total) * 100) : 0;
-  };
-
   const getNotificationIcon = (notification: Notification) => {
     if (notification.type === 'salary') {
       return <DollarSign className="h-4 w-4 text-green-600" />;
@@ -330,7 +343,7 @@ export const NotificationCenter: React.FC = () => {
                         <div className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
                           <span>
-                            {getAttendancePercentage(notification.presentDays, notification.totalDays)}% attendance
+                            Present: {notification.presentDays}, Absent: {notification.absentDays}, Half Day: {notification.halfDays}
                           </span>
                         </div>
                       </div>
