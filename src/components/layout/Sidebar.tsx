@@ -6,7 +6,7 @@ import {
   LayoutDashboard,
   Users,
   CheckSquare,
-  TrendingUp,
+ 
   MessageCircle,
   Bot,
   Calendar,
