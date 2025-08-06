@@ -1019,7 +1019,7 @@ export const Tasks: React.FC = () => {
                               <Trash2 className="h-5 w-5" />
                             </Button>
                           )}
-                          {/* Status select for Delivery Supervisor: only delivered/not-delivered */}
+                          {/* Status select for Delivery Supervisor: only delivered */}
                           {(user?.role === 'Delivery Supervisor') ? (
                             <Select
                               value={task.status}
@@ -1030,7 +1030,6 @@ export const Tasks: React.FC = () => {
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="delivered">Delivered</SelectItem>
-                                <SelectItem value="not-delivered">Not Delivered</SelectItem>
                               </SelectContent>
                             </Select>
                           ) : (user?.role !== 'Admin') && (
