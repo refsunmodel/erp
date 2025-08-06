@@ -82,14 +82,17 @@ export const NotificationCenter: React.FC = () => {
     try {
       setLoading(true);
       const currentDate = new Date();
-      
+      // Set document title
+      document.title = "Arun offset Edgesync ERP by codetoli technology";
       const allNotifications: Notification[] = [];
 
       // Load salary notifications (Admin only)
       if (user?.role === 'Admin') {
-        const [employeesResponse, attendanceResponse] = await Promise.all([
+        const [employeesResponse, attendanceResponse, salaryResponse] = await Promise.all([
           employeeService.list(),
-          attendanceService.list()
+          attendanceService.list(),
+          // Add salaryService for checking paid status
+          (await import('@/lib/database')).salaryService.list()
         ]);
 
         const salaryNotifications: SalaryNotification[] = [];
@@ -119,9 +122,15 @@ export const NotificationCenter: React.FC = () => {
             const absentDays = attendanceWindow.filter((att: any) => att.status === 'Absent').length;
             const halfDays = attendanceWindow.filter((att: any) => att.status === 'Half Day').length;
 
-            // Show notification if salary due (within 3 days of salary date)
+            // Check if salary is already paid for this month
+            const currentMonth = now.toISOString().slice(0, 7);
+            const paidSalary = salaryResponse.documents.find(
+              (s: any) => s.employeeId === employee.$id && s.month === currentMonth && s.status === 'Paid'
+            );
+
+            // Show notification if salary due (within 3 days of salary date) and not paid
             const daysDifference = Math.abs(currentDateObj.getDate() - salaryDay);
-            if (daysDifference <= 3 || (salaryDay > 28 && currentDateObj.getDate() <= 3)) {
+            if ((!paidSalary) && (daysDifference <= 3 || (salaryDay > 28 && currentDateObj.getDate() <= 3))) {
               salaryNotifications.push({
                 $id: employee.$id,
                 name: employee.name,

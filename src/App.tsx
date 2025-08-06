@@ -61,7 +61,7 @@ const AppRoutes = () => {
       )}
       
       {/* Employee Routes - Graphic Designer, Printing Technician, Delivery Supervisor */}
-      {(user.role === 'Graphic Designer' || user.role === 'Printing Technician' || user.role === 'Delivery Supervisor' || user.role === 'Manager') && (
+      {(user.role === 'Graphic Designer' || user.role === 'Printing Technician' || user.role === 'Delivery Supervisor') && (
         <>
           <Route path="/salary" element={<Salary />} />
         </>
@@ -94,3 +94,9 @@ function App() {
 }
 
 export default App;
+
+// In your main layout/header/navbar component, update the logo/title:
+// <div className="flex items-center gap-2">
+//   {/* ...logo icon... */}
+//   <span className="font-bold text-lg tracking-tight">Edgesync ERP</span>
+// </div>

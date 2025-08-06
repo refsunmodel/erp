@@ -128,10 +128,13 @@ export const Tasks: React.FC = () => {
         }
         return task;
       });
-      // Remove delivered tasks for Delivery Supervisor
+      // Remove delivered/not-delivered tasks for Delivery Supervisor
       let filteredTasks = tasksWithUpdatedStatus;
       if (user?.role === 'Delivery Supervisor') {
-        filteredTasks = filteredTasks.filter((t: any) => t.status !== 'delivered');
+        filteredTasks = filteredTasks.filter((t: any) =>
+          t.taskType === 'delivery' &&
+          (t.status === 'pending' || t.status === 'in-progress')
+        );
       }
       setTasks(filteredTasks as Task[]);
     } catch (error: any) {
@@ -288,17 +291,26 @@ export const Tasks: React.FC = () => {
 
       // Update the task status
       await taskService.update(taskId, { status: newStatus });
-      
-      // If delivered, remove from list for Delivery Supervisor
+
+      // If delivered or not-delivered, remove from list for Delivery Supervisor
+      if (
+        (newStatus === 'delivered' || newStatus === 'not-delivered') &&
+        user?.role === 'Delivery Supervisor'
+      ) {
+        setTasks(prev => prev.filter(t => t.$id !== taskId));
+        return; // Don't reload all tasks, just remove from UI
+      }
+
+      // If delivered, remove from list for Delivery Supervisor (legacy)
       if (newStatus === 'delivered' && user?.role === 'Delivery Supervisor') {
         setTasks(prev => prev.filter(t => t.$id !== taskId));
       }
-      
+
       // If task is being completed and it's a printing task, create delivery task
       if (newStatus === 'completed' && task.taskType === 'printing') {
         await handleWorkflowProgression(task);
       }
-      
+
       toast({
         title: "Task Updated",
         description: `Task status changed to ${newStatus.replace('-', ' ')}`,
@@ -567,6 +579,16 @@ export const Tasks: React.FC = () => {
         (task.description || "").toLowerCase().includes(term) ||
         (task.customerPhone || "").toLowerCase().includes(term)
       );
+    })
+    // For Delivery Supervisor, only show pending/in-progress delivery tasks
+    .filter(task => {
+      if (user?.role === 'Delivery Supervisor') {
+        return task.taskType === 'delivery' && (
+          task.status === 'pending' ||
+          task.status === 'in-progress'
+        );
+      }
+      return true;
     });
 
   return (
@@ -829,11 +851,13 @@ export const Tasks: React.FC = () => {
       <Card>
         <CardHeader>
           <CardTitle>
-            {user?.role === 'Admin' ? 'All Tasks' : user?.role === 'Manager' ? 'All Tasks' : 'My Tasks'}
+            {user?.role === 'Admin' ? 'All Tasks' : user?.role === 'Manager' ? 'All Tasks' : user?.role === 'Delivery Supervisor' ? 'Delivery Tasks' : 'My Tasks'}
           </CardTitle>
           <CardDescription>
             {user?.role === 'Admin' || user?.role === 'Manager'
               ? 'Manage all tasks across your organization'
+              : user?.role === 'Delivery Supervisor'
+              ? 'Your assigned delivery tasks and their current status'
               : 'Your assigned tasks and their current status'}
           </CardDescription>
         </CardHeader>
@@ -862,7 +886,6 @@ export const Tasks: React.FC = () => {
                     <TableHead className="w-24 sm:w-auto">Type</TableHead>
                     <TableHead className="w-24 sm:w-auto">Priority</TableHead>
                     <TableHead className="w-32 sm:w-auto">Due Date</TableHead>
-                    {/* New File Link column for Printing Tasks */}
                     <TableHead className="w-32 sm:w-auto">File Link</TableHead>
                     <TableHead className="w-24 sm:w-auto">Status</TableHead>
                     <TableHead className="w-32 sm:w-auto">Actions</TableHead>
@@ -940,6 +963,8 @@ export const Tasks: React.FC = () => {
                           <Badge className={`ml-1 text-xs ${
                             task.status === 'delivered'
                               ? 'bg-green-100 text-green-800'
+                              : task.status === 'not-delivered'
+                              ? 'bg-red-100 text-red-800'
                               : getStatusColor(task.status || 'pending')
                           }`}>
                             {formatStatus(task.status || 'pending')}
@@ -994,8 +1019,21 @@ export const Tasks: React.FC = () => {
                               <Trash2 className="h-5 w-5" />
                             </Button>
                           )}
-                          {/* Status select for non-admin/non-delivery roles */}
-                          {(user?.role !== 'Admin') && (
+                          {/* Status select for Delivery Supervisor: only delivered/not-delivered */}
+                          {(user?.role === 'Delivery Supervisor') ? (
+                            <Select
+                              value={task.status}
+                              onValueChange={(value: Task['status']) => updateTaskStatus(task.$id, value)}
+                            >
+                              <SelectTrigger className="w-full sm:w-32 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="delivered">Delivered</SelectItem>
+                                <SelectItem value="not-delivered">Not Delivered</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (user?.role !== 'Admin') && (
                             <Select
                               value={task.status || 'pending'}
                               onValueChange={(value: Task['status']) => updateTaskStatus(task.$id, value)}
@@ -1033,7 +1071,6 @@ export const Tasks: React.FC = () => {
                 </TableBody>
               </div>
             </div>
-           
           )}
         </CardContent>
       </Card>

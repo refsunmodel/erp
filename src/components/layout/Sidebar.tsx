@@ -111,7 +111,7 @@ export const Sidebar: React.FC = () => {
                 <LayoutDashboard className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h1 className="text-lg font-semibold">ERP System</h1>
+                <h1 className="text-lg font-semibold">Edgesync ERP</h1>
                 <p className="text-xs text-gray-500">{user.role}</p>
               </div>
             </div>

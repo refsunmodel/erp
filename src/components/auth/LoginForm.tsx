@@ -44,9 +44,9 @@ export const LoginForm: React.FC = () => {
               <LayoutDashboard className="h-7 w-7 text-white" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>
+          <CardTitle className="text-2xl font-bold">Welcome Back to Arun Offset EdgeSync ERP</CardTitle>
           <CardDescription>
-            Sign in to your ERP account to continue
+            Sign in to your EdgesyncERP account to continue
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -95,12 +95,7 @@ export const LoginForm: React.FC = () => {
           {/* Demo Credentials */}
 
           {/* Setup Instructions */}
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-            <p className="text-xs text-blue-800">
-              <strong>Setup Required:</strong> Please update your Appwrite
-              project ID and database ID in src/lib/appwrite.ts
-            </p>
-          </div>
+         
         </CardContent>
       </Card>
     </div>
