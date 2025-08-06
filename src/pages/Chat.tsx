@@ -58,6 +58,25 @@ export const Chat: React.FC = () => {
     scrollToBottom();
   }, [directMessages, groupMessages]);
 
+  // Poll for new messages when the chat tab is active
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+
+    if (activeTab === 'group') {
+      interval = setInterval(() => {
+        loadGroupMessages();
+      }, 4000); // Poll every 4 seconds
+    } else if (activeTab === 'direct' && selectedEmployee) {
+      interval = setInterval(() => {
+        loadDirectMessages();
+      }, 4000); // Poll every 4 seconds
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [activeTab, selectedEmployee]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };

@@ -25,7 +25,7 @@ const menuItems = {
     { title: 'Employees', href: '/employees', icon: Users },
     { title: 'Tasks', href: '/tasks', icon: CheckSquare },
     { title: 'Attendance', href: '/attendance', icon: Calendar },
-    { title: 'Stats & Trends', href: '/stats', icon: TrendingUp },
+    // { title: 'Stats & Trends', href: '/stats', icon: TrendingUp },
     { title: 'Chat', href: '/chat', icon: MessageCircle },
   ],
   Manager: [
@@ -33,7 +33,7 @@ const menuItems = {
     // { title: 'Employees', href: '/employees', icon: Users },
     { title: 'Tasks', href: '/tasks', icon: CheckSquare },
     { title: 'Attendance', href: '/attendance', icon: Calendar },
-    { title: 'Stats & Trends', href: '/stats', icon: TrendingUp },
+    // { title: 'Stats & Trends', href: '/stats', icon: TrendingUp },
     { title: 'Chat', href: '/chat', icon: MessageCircle },
     { title: 'Salary Info', href: '/salary', icon: DollarSign },
 
