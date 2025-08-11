@@ -213,15 +213,15 @@ export const Tasks: React.FC = () => {
 
     try {
       // Check for duplicate orderNo if provided
-      if (formData.orderNo) {
-        const allTasks = await taskService.list();
-        const exists = allTasks.documents.some((t: any) => t.orderNo === formData.orderNo);
-        if (exists) {
-          window.alert("This order number already exists. Please use a different one.");
-          setSubmitting(false);
-          return;
-        }
-      }
+      // if (formData.orderNo) {
+      //   const allTasks = await taskService.list();
+      //   const exists = allTasks.documents.some((t: any) => t.orderNo === formData.orderNo);
+      //   if (exists) {
+      //     window.alert("This order number already exists. Please use a different one.");
+      //     setSubmitting(false);
+      //     return;
+      //   }
+      // }
       const selectedEmployee = employees.find(emp => emp.$id === formData.assigneeId);
 
       if (!selectedEmployee || !selectedEmployee.authUserId) {
