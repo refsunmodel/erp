@@ -34,6 +34,7 @@ interface Task {
   originalOrderId?: string;
   $createdAt: string;
   parentTaskId?: string; // Add 'parentTaskId' to Task interface for workflow linking
+  lastUpdated?: string; // Add lastUpdated field
 }
 
 interface Employee {
@@ -80,6 +81,7 @@ export const Tasks: React.FC = () => {
   });
 
   const [searchTerm, setSearchTerm] = useState(""); // <-- Add search state
+  const [taskTypeFilter, setTaskTypeFilter] = useState<string>('all'); // Add filter for task type
 
   // Add canCreateTask logic
   // Admin, Manager, and Graphic Designer can create tasks
@@ -212,16 +214,8 @@ export const Tasks: React.FC = () => {
     setSubmitting(true);
 
     try {
-      // Check for duplicate orderNo if provided
-      // if (formData.orderNo) {
-      //   const allTasks = await taskService.list();
-      //   const exists = allTasks.documents.some((t: any) => t.orderNo === formData.orderNo);
-      //   if (exists) {
-      //     window.alert("This order number already exists. Please use a different one.");
-      //     setSubmitting(false);
-      //     return;
-      //   }
-      // }
+      // Remove duplicate orderNo check
+
       const selectedEmployee = employees.find(emp => emp.$id === formData.assigneeId);
 
       if (!selectedEmployee || !selectedEmployee.authUserId) {
@@ -243,7 +237,8 @@ export const Tasks: React.FC = () => {
         createdBy: user?.name || user?.email || 'admin',
         fileUrl: formData.fileUrl,
         customerPhone: formData.customerPhone,
-        printingType: formData.printingType
+        printingType: formData.printingType,
+        lastUpdated: new Date().toISOString(), // Set initial lastUpdated
       };
 
       await taskService.create(taskData);
@@ -289,8 +284,8 @@ export const Tasks: React.FC = () => {
       const task = tasks.find(t => t.$id === taskId);
       if (!task) return;
 
-      // Update the task status
-      await taskService.update(taskId, { status: newStatus });
+      // Update the task status and lastUpdated
+      await taskService.update(taskId, { status: newStatus, lastUpdated: new Date().toISOString() });
 
       // If delivered or not-delivered, remove from list for Delivery Supervisor
       if (
@@ -376,7 +371,8 @@ export const Tasks: React.FC = () => {
             parentTaskId: task.$id, // Link to parent task
             fileUrl: task.fileUrl,
             customerPhone: task.customerPhone,
-            printingType: task.printingType
+            printingType: task.printingType,
+            lastUpdated: new Date().toISOString(), // Set lastUpdated for delivery task
           };
           
           await taskService.create(deliveryTaskData);
@@ -488,7 +484,8 @@ export const Tasks: React.FC = () => {
         priority: formData.priority,
         fileUrl: formData.fileUrl,
         customerPhone: formData.customerPhone,
-        printingType: formData.printingType
+        printingType: formData.printingType,
+        lastUpdated: new Date().toISOString(), // Update lastUpdated on edit
       };
 
       await taskService.update(editingTask.$id, updateData);
@@ -580,6 +577,13 @@ export const Tasks: React.FC = () => {
         (task.customerPhone || "").toLowerCase().includes(term)
       );
     })
+    // Admin: filter by task type if selected
+    .filter(task => {
+      if (user?.role === 'Admin' && taskTypeFilter !== 'all') {
+        return task.taskType === taskTypeFilter;
+      }
+      return true;
+    })
     // For Delivery Supervisor, only show pending/in-progress delivery tasks
     .filter(task => {
       if (user?.role === 'Delivery Supervisor') {
@@ -610,6 +614,24 @@ export const Tasks: React.FC = () => {
               <SelectItem value="yearly">Yearly</SelectItem>
             </SelectContent>
           </Select>
+          {/* Task type filter for Admin only */}
+          {user?.role === 'Admin' && (
+            <Select
+              value={taskTypeFilter}
+              onValueChange={setTaskTypeFilter}
+              defaultValue="all"
+            >
+              <SelectTrigger className="w-40 ml-2">
+                <SelectValue placeholder="Task Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="designing">Designing</SelectItem>
+                <SelectItem value="printing">Printing</SelectItem>
+                <SelectItem value="delivery">Delivery</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
         </div>
       )}
 
@@ -883,7 +905,7 @@ export const Tasks: React.FC = () => {
                     <TableHead className="w-24 sm:w-auto">Order No</TableHead>
                     <TableHead className="min-w-[200px] sm:min-w-0">Task</TableHead>
                     {user?.role === 'Admin' && <TableHead className="w-32 sm:w-auto">Assignee</TableHead>}
-                    <TableHead className="w-24 sm:w-auto">Type</TableHead>
+                    <TableHead className="w-32 sm:w-auto">Type</TableHead>
                     <TableHead className="w-24 sm:w-auto">Priority</TableHead>
                     <TableHead className="w-32 sm:w-auto">Due Date</TableHead>
                     <TableHead className="w-32 sm:w-auto">File Link</TableHead>
@@ -898,10 +920,12 @@ export const Tasks: React.FC = () => {
                         <span className="font-mono text-xs sm:text-sm">{task.orderNo || task.$id.slice(-6).toUpperCase()}</span>
                       </TableCell>
                       <TableCell>
-                        <div>
+                        <div style={{ maxWidth: 220, overflow: 'visible', whiteSpace: 'normal', wordBreak: 'break-word' }}>
                           <p className="font-medium text-sm sm:text-base">{task.title}</p>
                           {task.description && (
-                            <p className="text-xs sm:text-sm text-gray-500 mt-1 truncate max-w-[200px] sm:max-w-none">{task.description}</p>
+                            <p className="text-xs sm:text-sm text-gray-500 mt-1" style={{ maxWidth: 200, overflow: 'visible', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                              {task.description}
+                            </p>
                           )}
                           {task.fileUrl && (
                             <a 
@@ -1286,6 +1310,22 @@ export const Tasks: React.FC = () => {
                   <Badge className={`mt-1 ${getPriorityColor(selectedTaskDetail.priority || 'medium')}`}>
                     {(selectedTaskDetail.priority || 'medium').charAt(0).toUpperCase() + (selectedTaskDetail.priority || 'medium').slice(1)}
                   </Badge>
+                </div>
+              </div>
+              
+              {/* Show last updated and assignee */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Last Updated</Label>
+                  <p className="text-sm text-gray-700 mt-1">
+                    {selectedTaskDetail.lastUpdated && selectedTaskDetail.lastUpdated !== 'N/A'
+                      ? new Date(selectedTaskDetail.lastUpdated).toLocaleString()
+                      : 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Assignee</Label>
+                  <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.assigneeName}</p>
                 </div>
               </div>
               
