@@ -8,6 +8,7 @@ export const employeeService = {
 
   async list(userId?: string) {
     const queries = userId ? [Query.equal('authUserId', userId)] : [];
+    queries.push(Query.limit(100)); // Increase limit to 100
     return await databases.listDocuments(DATABASE_ID, COLLECTIONS.EMPLOYEES, queries);
   },
 
@@ -72,7 +73,8 @@ export const taskService = {
 
   async list(userId?: string) {
     const queries = userId ? [Query.equal('assigneeId', userId)] : [];
-    queries.push(Query.orderDesc('$createdAt')); // Order by creation date
+    queries.push(Query.orderDesc('$createdAt'));
+    queries.push(Query.limit(100)); // Increase limit to 100
     return await databases.listDocuments(DATABASE_ID, COLLECTIONS.TASKS, queries);
   },
 
