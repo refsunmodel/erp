@@ -1,0 +1,308 @@
+const API_ENDPOINT = 'https://cloud.appwrite.io/v1';
+const PROJECT_ID = '68a0a5d1000e473badfc';
+const DATABASE_ID = '68a0a5f200265813e4f9';
+const API_KEY = 'standard_8e1a4d37694fdf978c63a42b8e2a15ca0b3ca6e7dd75eaaedc5cbded43e67e1fae39c983355727a422ec4acac5b86740eab97d6cbc68b6599e80de70ae9d55eac6ec8c9fccc8496dd9c4ee0d92c0b1f62de73c3e39ce9f218e92debaa1b27fc912576b0ebd20189b4cfb063318912b4451b7745c0be569a5f7bdf821e0543571'; // ⚠️ Use only in backend code!
+
+// List of collections to create
+const COLLECTIONS = [
+  { id: 'users', name: 'Users' },
+  { id: 'employees', name: 'Employees' },
+  { id: 'customers', name: 'Customers' },
+  { id: 'stores', name: 'Stores' },
+  { id: 'tasks', name: 'Tasks' },
+  { id: 'daily-reports', name: 'Daily Reports' },
+  { id: 'credits', name: 'Credits' },
+  { id: 'documents', name: 'Documents' },
+  { id: 'invoices', name: 'Invoices' },
+  { id: 'stats', name: 'Stats' },
+  { id: 'salary-records', name: 'Salary Records' },
+  { id: 'chat-messages', name: 'Chat Messages' },
+  { id: 'inventory', name: 'Inventory' },
+  { id: '68877fd3000f7a0f7236', name: 'Attendance' },
+  { id: '68878131002b39ca4827', name: 'Lamination Types' }
+];
+
+// Attribute definitions for each collection
+const ATTRIBUTES = {
+  // Attendance
+  '68877fd3000f7a0f7236': [
+    { type: 'string', key: 'employeeId', size: 64, required: true },
+    { type: 'string', key: 'employeeName', size: 128, required: true },
+    { type: 'string', key: 'date', size: 32, required: true },
+    { type: 'string', key: 'status', size: 8, required: true, enum: ['Present', 'Absent'] },
+    { type: 'string', key: 'dayType', size: 16, required: true, enum: ['Full Day', 'Half Day'] },
+    { type: 'string', key: 'markedBy', size: 128, required: true }
+  ],
+  // Chat Messages
+  'chat-messages': [
+    { type: 'string', key: 'senderId', size: 64, required: true },
+    { type: 'string', key: 'senderName', size: 128, required: true },
+    { type: 'string', key: 'receiverId', size: 64, required: false },
+    { type: 'string', key: 'chatType', size: 8, required: true, enum: ['direct', 'group'] },
+    { type: 'string', key: 'message', size: 1024, required: true },
+    { type: 'string', key: 'timestamp', size: 32, required: true }
+  ],
+  // Employee
+  employees: [
+    { type: 'string', key: 'name', size: 128, required: true },
+    { type: 'string', key: 'email', size: 128, required: true },
+    { type: 'string', key: 'role', size: 32, required: true, enum: ['Admin', 'Manager', 'Graphic Designer', 'Printing Technician', 'Delivery Supervisor'] },
+    { type: 'number', key: 'annualSalary', required: true },
+    { type: 'string', key: 'bankDetails', size: 255, required: true },
+    { type: 'string', key: 'storeId', size: 64, required: false },
+    { type: 'string', key: 'storeName', size: 128, required: false },
+    { type: 'string', key: 'status', size: 8, required: true, enum: ['Active', 'Inactive'] },
+    { type: 'string', key: 'authUserId', size: 64, required: false },
+    { type: 'string', key: 'modeOfPayment', size: 32, required: false },
+    { type: 'string', key: 'salaryDate', size: 32, required: false },
+    { type: 'string', key: 'lastPaymentDate', size: 32, required: false },
+    { type: 'string', key: 'password', size: 128, required: false },
+    { type: 'number', key: 'advancePayment', required: false }
+  ],
+  // Credit
+  credits: [
+    { type: 'string', key: 'customerName', size: 128, required: true },
+    { type: 'string', key: 'customerEmail', size: 128, required: true },
+    { type: 'string', key: 'customerPhone', size: 32, required: true },
+    { type: 'number', key: 'amount', required: true },
+    { type: 'string', key: 'type', size: 8, required: true, enum: ['Credit', 'Debt'] },
+    { type: 'string', key: 'dueDate', size: 32, required: true },
+    { type: 'string', key: 'status', size: 8, required: true, enum: ['Pending', 'Paid', 'Overdue'] },
+    { type: 'string', key: 'notes', size: 1024, required: false },
+    { type: 'string', key: 'reminders', size: 1024, required: false }
+  ],
+  // Customer
+  customers: [
+    { type: 'string', key: 'name', size: 128, required: true },
+    { type: 'string', key: 'email', size: 128, required: true },
+    { type: 'string', key: 'phone', size: 32, required: true },
+    { type: 'string', key: 'address', size: 255, required: true },
+    { type: 'string', key: 'income', size: 64, required: true },
+    { type: 'string', key: 'status', size: 8, required: true, enum: ['Active', 'Inactive'] },
+    { type: 'string', key: 'notes', size: 1024, required: false }
+  ],
+  // Daily Report
+  'daily-reports': [
+    { type: 'string', key: 'date', size: 32, required: true },
+    { type: 'number', key: 'sales', required: true },
+    { type: 'number', key: 'expenses', required: true },
+    { type: 'number', key: 'customerCount', required: true },
+    { type: 'string', key: 'notes', size: 1024, required: false },
+    { type: 'string', key: 'userId', size: 64, required: true },
+    { type: 'string', key: 'storeId', size: 64, required: false },
+    { type: 'string', key: 'userName', size: 128, required: true },
+    { type: 'string', key: 'storeName', size: 128, required: false }
+  ],
+  // Document
+  documents: [
+    { type: 'string', key: 'title', size: 255, required: true },
+    { type: 'string', key: 'description', size: 1024, required: false },
+    { type: 'string', key: 'category', size: 16, required: true, enum: ['Finance', 'Legal', 'HR', 'Operations', 'Contracts', 'Other'] },
+    { type: 'string', key: 'fileUrl', size: 255, required: true },
+    { type: 'string', key: 'fileType', size: 8, required: true, enum: ['PDF', 'DOC', 'XLS', 'IMG', 'Other'] },
+    { type: 'string', key: 'uploadedBy', size: 128, required: true },
+    { type: 'string', key: 'tags', size: 255, required: false },
+    { type: 'boolean', key: 'isConfidential', required: true }
+  ],
+  // Inventory
+  inventory: [
+    { type: 'string', key: 'productName', size: 128, required: true },
+    { type: 'string', key: 'description', size: 1024, required: false },
+    { type: 'string', key: 'category', size: 64, required: true },
+    { type: 'string', key: 'sku', size: 64, required: true },
+    { type: 'number', key: 'quantity', required: true },
+    { type: 'number', key: 'minStockLevel', required: true },
+    { type: 'number', key: 'price', required: true },
+    { type: 'number', key: 'costPrice', required: true },
+    { type: 'string', key: 'supplier', size: 128, required: true },
+    { type: 'string', key: 'location', size: 128, required: true },
+    { type: 'string', key: 'status', size: 16, required: true, enum: ['In Stock', 'Low Stock', 'Out of Stock'] }
+  ],
+  // Salary Info
+  'salary-records': [
+    { type: 'string', key: 'month', size: 16, required: true },
+    { type: 'number', key: 'baseSalary', required: true },
+    { type: 'number', key: 'overtime', required: true },
+    { type: 'number', key: 'bonus', required: true },
+    { type: 'number', key: 'deductions', required: true },
+    { type: 'number', key: 'advanceSalary', required: true },
+    { type: 'number', key: 'netSalary', required: true },
+    { type: 'string', key: 'status', size: 16, required: true, enum: ['Paid', 'Pending', 'Processing'] },
+    { type: 'string', key: 'payDate', size: 32, required: false }
+  ],
+  // Store
+  stores: [
+    { type: 'string', key: 'name', size: 128, required: true },
+    { type: 'string', key: 'address', size: 255, required: true },
+    { type: 'string', key: 'managerId', size: 64, required: false },
+    { type: 'string', key: 'managerName', size: 128, required: false },
+    { type: 'string', key: 'phone', size: 32, required: true },
+    { type: 'string', key: 'email', size: 128, required: true },
+    { type: 'string', key: 'status', size: 8, required: true, enum: ['Active', 'Inactive'] },
+    { type: 'number', key: 'monthlySales', required: true },
+    { type: 'number', key: 'monthlyExpenses', required: true },
+    { type: 'number', key: 'employeeCount', required: true }
+  ],
+  // Task
+  tasks: [
+    { type: 'string', key: 'orderNo', size: 32, required: false },
+    { type: 'string', key: 'title', size: 128, required: true },
+    { type: 'string', key: 'description', size: 1024, required: true },
+    { type: 'string', key: 'taskType', size: 16, required: false, enum: ['designing', 'printing', 'delivery'] },
+    { type: 'string', key: 'assigneeId', size: 64, required: true },
+    { type: 'string', key: 'assigneeName', size: 128, required: true },
+    { type: 'string', key: 'dueDate', size: 32, required: true },
+    { type: 'string', key: 'dueTime', size: 16, required: false },
+    { type: 'string', key: 'status', size: 16, required: true, enum: ['pending', 'in-progress', 'completed', 'overdue', 'delivered', 'not-delivered'] },
+    { type: 'string', key: 'priority', size: 8, required: true, enum: ['low', 'medium', 'high'] },
+    { type: 'string', key: 'createdBy', size: 64, required: true },
+    { type: 'string', key: 'fileUrl', size: 255, required: false },
+    { type: 'string', key: 'customerPhone', size: 32, required: false },
+    { type: 'string', key: 'printingType', size: 32, required: false },
+    { type: 'string', key: 'workflowStage', size: 16, required: false, enum: ['designing', 'printing', 'delivery', 'completed'] },
+    { type: 'string', key: 'originalOrderId', size: 64, required: false },
+    { type: 'string', key: 'parentTaskId', size: 64, required: false },
+    { type: 'string', key: 'lastUpdated', size: 32, required: false }
+  ]
+};
+
+// Create a single collection
+async function createCollection(collectionId, name) {
+  const res = await fetch(`${API_ENDPOINT}/databases/${DATABASE_ID}/collections`, {
+    method: 'POST',
+    headers: {
+      'X-Appwrite-Project': PROJECT_ID,
+      'X-Appwrite-Key': API_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      collectionId: collectionId,
+      name: name,
+      permissions: [
+        'read("any")',
+        'write("any")'
+      ]
+    })
+  });
+
+  if (res.status === 409) {
+    console.log(`Collection already exists: ${name} (${collectionId})`);
+    return;
+  }
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Error creating ${name}: ${errorText}`);
+  }
+
+  console.log(`Created collection: ${name} (${collectionId})`);
+}
+
+// Fetch all attributes for a collection
+async function fetchAttributes(collectionId) {
+  const res = await fetch(`${API_ENDPOINT}/databases/${DATABASE_ID}/collections/${collectionId}/attributes`, {
+    method: 'GET',
+    headers: {
+      'X-Appwrite-Project': PROJECT_ID,
+      'X-Appwrite-Key': API_KEY,
+      'Content-Type': 'application/json'
+    }
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Error fetching attributes for ${collectionId}: ${errorText}`);
+  }
+  const data = await res.json();
+  return data.attributes || [];
+}
+
+// Create an attribute if it doesn't exist and doesn't start with $
+async function createAttribute(collectionId, attr) {
+  let url = `${API_ENDPOINT}/databases/${DATABASE_ID}/collections/${collectionId}/attributes`;
+  let body = { key: attr.key, required: !!attr.required };
+  let method = 'POST';
+
+  switch (attr.type) {
+    case 'string':
+      url += '/string';
+      body.size = attr.size || 255;
+      if (attr.default !== undefined) body.default = attr.default;
+      break;
+    case 'number':
+      url += '/integer';
+      if (attr.default !== undefined) body.default = attr.default;
+      break;
+    case 'boolean':
+      url += '/boolean';
+      if (attr.default !== undefined) body.default = attr.default;
+      break;
+    case 'datetime':
+      url += '/datetime';
+      break;
+    default:
+      throw new Error(`Unsupported attribute type: ${attr.type}`);
+  }
+
+  const res = await fetch(url, {
+    method,
+    headers: {
+      'X-Appwrite-Project': PROJECT_ID,
+      'X-Appwrite-Key': API_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (res.status === 409) {
+    console.log(`  Attribute already exists: ${attr.key} (${attr.type})`);
+    return;
+  }
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`  Error creating attribute ${attr.key}: ${errorText}`);
+  }
+
+  console.log(`  Created attribute: ${attr.key} (${attr.type})`);
+}
+
+// Loop through all collections and attributes
+async function run() {
+  for (const col of COLLECTIONS) {
+    try {
+      await createCollection(col.id, col.name);
+
+      // Fetch existing attributes for this collection
+      let existingAttrs = [];
+      try {
+        existingAttrs = await fetchAttributes(col.id);
+      } catch (err) {
+        console.error(err.message);
+        continue;
+      }
+      const existingKeys = new Set(
+        existingAttrs
+          .filter(attr => !attr.key.startsWith('$')) // skip prebuilt attributes
+          .map(attr => attr.key)
+      );
+
+      if (ATTRIBUTES[col.id]) {
+        for (const attr of ATTRIBUTES[col.id]) {
+          if (existingKeys.has(attr.key)) {
+            console.log(`  Attribute already exists (skipped): ${attr.key}`);
+            continue;
+          }
+          try {
+            await createAttribute(col.id, attr);
+          } catch (err) {
+            console.error(err.message);
+          }
+        }
+      }
+    } catch (err) {
+      console.error(err.message);
+    }
+  }
+}
+
+run();
