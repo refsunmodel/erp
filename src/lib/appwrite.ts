@@ -5,14 +5,17 @@ const client = new Client();
 // You need to replace these with your actual Appwrite project details
 client
   .setEndpoint('https://cloud.appwrite.io/v1') // Your API Endpoint
-  .setProject('684c44cb002c7271998e'); // Replace with your actual project ID
+  // .setProject('684c44cb002c7271998e'); 
+    .setProject('68a3ae9f003d65994d2b'); // Replace with your actual project ID
 
 export const account = new Account(client);
 export const databases = new Databases(client);
 export const storage = new Storage(client);
 
 // Replace with your actual database ID
-export const DATABASE_ID = '684c457200384960c942';
+// export const DATABASE_ID = '684c457200384960c942';
+export const DATABASE_ID = '68a3aeb20029a15c5adf';
+
 
 export const COLLECTIONS = {
   USERS: 'users',
