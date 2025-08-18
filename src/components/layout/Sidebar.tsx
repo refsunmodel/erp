@@ -7,7 +7,7 @@ import {
   Users,
   CheckSquare,
  
-  MessageCircle,
+ 
   Bot,
   Calendar,
   DollarSign,
