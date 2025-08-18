@@ -26,7 +26,7 @@ const menuItems = {
     { title: 'Tasks', href: '/tasks', icon: CheckSquare },
     { title: 'Attendance', href: '/attendance', icon: Calendar },
     // { title: 'Stats & Trends', href: '/stats', icon: TrendingUp },
-    { title: 'Chat', href: '/chat', icon: MessageCircle },
+    // { title: 'Chat', href: '/chat', icon: MessageCircle },
   ],
   Manager: [
     { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -34,7 +34,7 @@ const menuItems = {
     { title: 'Tasks', href: '/tasks', icon: CheckSquare },
     { title: 'Attendance', href: '/attendance', icon: Calendar },
     // { title: 'Stats & Trends', href: '/stats', icon: TrendingUp },
-    { title: 'Chat', href: '/chat', icon: MessageCircle },
+    // { title: 'Chat', href: '/chat', icon: MessageCircle },
     { title: 'Salary Info', href: '/salary', icon: DollarSign },
 
   ],
@@ -42,19 +42,19 @@ const menuItems = {
     { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { title: 'Tasks', href: '/tasks', icon: CheckSquare },
     { title: 'Salary Info', href: '/salary', icon: DollarSign },
-    { title: 'Chat', href: '/chat', icon: MessageCircle },
+    // { title: 'Chat', href: '/chat', icon: MessageCircle },
   ],
   'Printing Technician': [
     { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { title: 'Tasks', href: '/tasks', icon: CheckSquare },
     { title: 'Salary Info', href: '/salary', icon: DollarSign },
-    { title: 'Chat', href: '/chat', icon: MessageCircle },
+    // { title: 'Chat', href: '/chat', icon: MessageCircle },
   ],
   'Delivery Supervisor': [
     { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { title: 'Tasks', href: '/tasks', icon: CheckSquare },
     { title: 'Salary Info', href: '/salary', icon: DollarSign },
-    { title: 'Chat', href: '/chat', icon: MessageCircle },
+    // { title: 'Chat', href: '/chat', icon: MessageCircle },
   ],
 };
 
