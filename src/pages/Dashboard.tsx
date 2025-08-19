@@ -93,15 +93,15 @@ const AdminDashboard = () => {
       const totalExpenses = reportsData.reduce((sum: number, report: any) => sum + (report.expenses || 0), 0);
 
       const calculatedTaskStats = {
-        designingPending: tasksData.filter((t: any) => t.taskType === 'designing' && t.status === 'pending').length,
-        designingInProgress: tasksData.filter((t: any) => t.taskType === 'designing' && t.status === 'in-progress').length,
-        designingCompleted: tasksData.filter((t: any) => t.taskType === 'designing' && (t.status === 'completed' || (t.workflowStage === 'designing' && t.status === 'completed'))).length,
-        printingPending: tasksData.filter((t: any) => t.taskType === 'printing' && t.status === 'pending').length,
-        printingInProgress: tasksData.filter((t: any) => t.taskType === 'printing' && t.status === 'in-progress').length,
-        printingCompleted: tasksData.filter((t: any) => t.taskType === 'printing' && (t.status === 'completed' || (t.workflowStage === 'printing' && t.status === 'completed'))).length,
-        deliveryPending: tasksData.filter((t: any) => t.taskType === 'delivery' && t.status === 'pending').length,
-        deliveryInProgress: tasksData.filter((t: any) => t.taskType === 'delivery' && t.status === 'in-progress').length,
-        deliveryCompleted: tasksData.filter((t: any) => t.taskType === 'delivery' && t.status === 'completed').length
+        designingPending: tasksData.filter((t: any) => t.task_type === 'designing' && t.status === 'pending').length,
+        designingInProgress: tasksData.filter((t: any) => t.task_type === 'designing' && t.status === 'in-progress').length,
+        designingCompleted: tasksData.filter((t: any) => t.task_type === 'designing' && (t.status === 'completed' || (t.workflow_stage === 'designing' && t.status === 'completed'))).length,
+        printingPending: tasksData.filter((t: any) => t.task_type === 'printing' && t.status === 'pending').length,
+        printingInProgress: tasksData.filter((t: any) => t.task_type === 'printing' && t.status === 'in-progress').length,
+        printingCompleted: tasksData.filter((t: any) => t.task_type === 'printing' && (t.status === 'completed' || (t.workflow_stage === 'printing' && t.status === 'completed'))).length,
+        deliveryPending: tasksData.filter((t: any) => t.task_type === 'delivery' && t.status === 'pending').length,
+        deliveryInProgress: tasksData.filter((t: any) => t.task_type === 'delivery' && t.status === 'in-progress').length,
+        deliveryCompleted: tasksData.filter((t: any) => t.task_type === 'delivery' && t.status === 'completed').length
       };
 
       const recentActivities = [
@@ -576,13 +576,13 @@ const EmployeeDashboard = () => {
                               </div>
                             </TableCell>
                             <TableCell className="w-[120px] min-w-[120px]">
-                              {task.taskType ? (
+                              {task.task_type ? (
                                 <Badge variant="outline" className={`text-xs ${
-                                  task.taskType === 'designing' ? 'border-blue-500 text-blue-700' :
-                                  task.taskType === 'printing' ? 'border-green-500 text-green-700' :
+                                  task.task_type === 'designing' ? 'border-blue-500 text-blue-700' :
+                                  task.task_type === 'printing' ? 'border-green-500 text-green-700' :
                                   'border-orange-500 text-orange-700'
                                 }`}>
-                                  {task.taskType.charAt(0).toUpperCase() + task.taskType.slice(1)}
+                                  {task.task_type.charAt(0).toUpperCase() + task.task_type.slice(1)}
                                 </Badge>
                               ) : (
                                 <Badge variant="outline" className="text-xs">General</Badge>

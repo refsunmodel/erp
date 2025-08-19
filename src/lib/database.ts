@@ -151,7 +151,12 @@ export const customerService = {
 // ---------------------- Task Service ----------------------
 export const taskService = {
   async create(data: any) {
-    return await supabase.from(TABLES.TASKS).insert([data]);
+    // Ensure due_date is either a valid date string or null/undefined
+    const payload = { ...data };
+    if (!payload.due_date || typeof payload.due_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(payload.due_date)) {
+      delete payload.due_date; // Remove due_date if empty or invalid
+    }
+    return await supabase.from(TABLES.TASKS).insert([payload]);
   },
 
   // Use pagination, column selection, and push filtering to Supabase
@@ -226,7 +231,12 @@ export const taskService = {
 
   // Batch update: status + assignee in one call
   async update(id: string, data: any) {
-    return await supabase.from(TABLES.TASKS).update(data).eq('id', id);
+    // Ensure due_date is either a valid date string or null/undefined
+    const payload = { ...data };
+    if ('due_date' in payload && (!payload.due_date || typeof payload.due_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(payload.due_date))) {
+      payload.due_date = null;
+    }
+    return await supabase.from(TABLES.TASKS).update(payload).eq('id', id);
   },
 
   async delete(id: string) {

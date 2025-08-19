@@ -115,10 +115,15 @@ export const Tasks: React.FC = () => {
   const loadTasks = async () => {
     try {
       setLoading(true);
-      // If you want to filter by assignee, use auth_user_id, not $id or email
-      // Example: const response = await taskService.list(user?.employeeData?.auth_user_id, 1000);
-      const response = await taskService.list(undefined, 1000); // or pass auth_user_id if needed
-      // Map Supabase data to expected fields
+      let response;
+      // Admin/Manager: show all tasks, others: only assigned tasks
+      if (user?.role === 'Admin' || user?.role === 'Manager') {
+        response = await taskService.list({ limit: 1000 });
+      } else if (user?.employeeData?.auth_user_id) {
+        response = await taskService.list({ userAuthUserId: user.employeeData.auth_user_id, limit: 1000 });
+      } else {
+        response = { data: [] };
+      }
       const tasks = (response.data || []).map((t: any) => ({
         ...t,
         $id: t.$id,

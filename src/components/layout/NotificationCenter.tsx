@@ -20,7 +20,7 @@ interface SalaryNotification {
   $id: string;
   name: string;
   role: string;
-  salaryDate: string;
+  salary_date: string;
   presentDays: number;
   absentDays: number;
   halfDays: number;
@@ -31,8 +31,8 @@ interface SalaryNotification {
 interface TaskNotification {
   $id: string;
   title: string;
-  assigneeName: string;
-  dueDate: string;
+  assignee_name: string;
+  due_date: string;
   priority: string;
   type: 'task';
   isNew?: boolean;
@@ -41,9 +41,9 @@ interface TaskNotification {
 interface NewTaskNotification {
   $id: string;
   title: string;
-  assigneeName: string;
-  taskType: string;
-  createdAt: string;
+  assignee_name: string;
+  task_type: string;
+  created_at: string;
   type: 'new_task';
 }
 
@@ -78,7 +78,6 @@ export const NotificationCenter: React.FC = () => {
 
   const loadNotifications = async () => {
     if (!user) return;
-    
     try {
       setLoading(true);
       const currentDate = new Date();
@@ -103,23 +102,23 @@ export const NotificationCenter: React.FC = () => {
         const currentDateObj = new Date();
 
         for (const employee of employees) {
-          if (employee.salaryDate) {
-            const salaryDay = parseInt(employee.salaryDate);
+          if (employee.salary_date) {
+            const salaryDay = parseInt(employee.salary_date);
             // Find current and previous salary date window
             const now = new Date();
-            let currentSalaryDate = new Date(now.getFullYear(), now.getMonth(), salaryDay);
-            if (now < currentSalaryDate) {
+            let currentsalary_date = new Date(now.getFullYear(), now.getMonth(), salaryDay);
+            if (now < currentsalary_date) {
               // If today is before this month's salary date, use previous month
-              currentSalaryDate = new Date(now.getFullYear(), now.getMonth() - 1, salaryDay);
+              currentsalary_date = new Date(now.getFullYear(), now.getMonth() - 1, salaryDay);
             }
-            let prevSalaryDate = new Date(currentSalaryDate);
-            prevSalaryDate.setMonth(currentSalaryDate.getMonth() - 1);
+            let prevsalary_date = new Date(currentsalary_date);
+            prevsalary_date.setMonth(currentsalary_date.getMonth() - 1);
 
-            // Attendance window: prevSalaryDate (exclusive) to currentSalaryDate (inclusive)
+            // Attendance window: prevsalary_date (exclusive) to currentsalary_date (inclusive)
             const attendanceWindow = attendance.filter((att: any) => {
               if (att.employeeId !== employee.$id) return false;
               const attDate = new Date(att.date);
-              return attDate > prevSalaryDate && attDate <= currentSalaryDate;
+              return attDate > prevsalary_date && attDate <= currentsalary_date;
             });
 
             const presentDays = attendanceWindow.filter((att: any) => att.status === 'Present').length;
@@ -139,7 +138,7 @@ export const NotificationCenter: React.FC = () => {
                 $id: employee.$id,
                 name: employee.name,
                 role: employee.role,
-                salaryDate: employee.salaryDate,
+                salary_date: employee.salary_date,
                 presentDays,
                 absentDays,
                 halfDays,
@@ -152,27 +151,31 @@ export const NotificationCenter: React.FC = () => {
         allNotifications.push(...salaryNotifications);
       }
 
-      // Load task notifications
-      const tasksResponse = user?.role === 'Admin' 
-        ? await taskService.list()
-        : await taskService.getByAssignee(user?.$id || '');
-
-      const tasks = (tasksResponse.data || []).map((t: any) => ({ ...t, $id: t.id, $createdAt: t.created_at }));
+      // Load tasks for notifications
+      let tasksResponse;
+      if (user.role === 'Admin' || user.role === 'Manager') {
+        tasksResponse = await taskService.list({ limit: 100 });
+      } else if (user.employeeData?.auth_user_id) {
+        tasksResponse = await taskService.list({ userAuthUserId: user.employeeData.auth_user_id, limit: 100 });
+      } else {
+        tasksResponse = { data: [] };
+      }
+      const tasks = (tasksResponse.data || []).map((t: any) => ({ ...t, $id: t.id, $created_at: t.created_at }));
 
       // For employees: Show new tasks assigned to them since last check
       if (user?.role !== 'Admin') {
         const newTaskNotifications: NewTaskNotification[] = tasks
           .filter((task: any) => {
-            const taskCreatedAt = new Date(task.$createdAt);
+            const taskcreated_at = new Date(task.$created_at);
             const lastCheck = new Date(lastCheckTime);
-            return taskCreatedAt > lastCheck && task.assigneeId === user.$id && task.status === 'pending';
+            return taskcreated_at > lastCheck && task.assigneeId === user.$id && task.status === 'pending';
           })
           .map((task: any) => ({
             $id: task.$id,
             title: task.title,
-            assigneeName: task.assigneeName,
-            taskType: task.taskType || 'general',
-            createdAt: task.$createdAt,
+            assignee_name: task.assignee_name,
+            task_type: task.task_type || 'general',
+            created_at: task.$created_at,
             type: 'new_task' as const
           }));
 
@@ -183,16 +186,16 @@ export const NotificationCenter: React.FC = () => {
       if (user?.role === 'Admin') {
         const newTaskNotifications: NewTaskNotification[] = tasks
           .filter((task: any) => {
-            const taskCreatedAt = new Date(task.$createdAt);
+            const taskcreated_at = new Date(task.$created_at);
             const lastCheck = new Date(lastCheckTime);
-            return taskCreatedAt > lastCheck;
+            return taskcreated_at > lastCheck;
           })
           .map((task: any) => ({
             $id: task.$id,
             title: task.title,
-            assigneeName: task.assigneeName,
-            taskType: task.taskType || 'general',
-            createdAt: task.$createdAt,
+            assignee_name: task.assignee_name,
+            task_type: task.task_type || 'general',
+            created_at: task.$created_at,
             type: 'new_task' as const
           }));
 
@@ -202,16 +205,16 @@ export const NotificationCenter: React.FC = () => {
       // Overdue tasks for all users
       const taskNotifications: TaskNotification[] = tasks
         .filter((task: any) => {
-          const dueDate = new Date(task.dueDate);
-          const isOverdue = task.status !== 'completed' && dueDate < currentDate;
+          const due_date = new Date(task.due_date);
+          const isOverdue = task.status !== 'completed' && due_date < currentDate;
           const isAssignedToUser = user?.role === 'Admin' || task.assigneeId === user?.$id;
           return isOverdue && isAssignedToUser;
         })
         .map((task: any) => ({
           $id: task.$id,
           title: task.title,
-          assigneeName: task.assigneeName,
-          dueDate: task.dueDate,
+          assignee_name: task.assignee_name,
+          due_date: task.due_date,
           priority: task.priority || 'medium',
           type: 'task' as const
         }));
@@ -228,9 +231,9 @@ export const NotificationCenter: React.FC = () => {
       // Check if there are new notifications and play sound
       const hasNewNotifications = allNotifications.some(notification => {
         if (notification.type === 'new_task') {
-          const taskCreatedAt = new Date(notification.createdAt);
+          const taskcreated_at = new Date(notification.created_at);
           const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-          return taskCreatedAt > fiveMinutesAgo;
+          return taskcreated_at > fiveMinutesAgo;
         }
         return false;
       });
@@ -370,7 +373,7 @@ export const NotificationCenter: React.FC = () => {
                           {user?.role === 'Admin' ? 'New Task Created' : 'New Task Assigned'}
                         </p>
                         <span className="text-xs text-blue-600">
-                          {formatDateTime(notification.createdAt)}
+                          {formatDateTime(notification.created_at)}
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground mb-1 truncate">
@@ -378,11 +381,11 @@ export const NotificationCenter: React.FC = () => {
                       </p>
                       <div className="flex items-center gap-3 text-xs">
                         <Badge variant="outline" className="text-xs">
-                          {notification.taskType}
+                          {notification.task_type}
                         </Badge>
                         {user?.role === 'Admin' && (
                           <span className="text-muted-foreground">
-                            → {notification.assigneeName}
+                            → {notification.assignee_name}
                           </span>
                         )}
                       </div>
@@ -394,7 +397,7 @@ export const NotificationCenter: React.FC = () => {
                           Overdue Task
                         </p>
                         <span className="text-xs text-red-600">
-                          {formatDate(notification.dueDate)}
+                          {formatDate(notification.due_date)}
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground mb-1 truncate">
@@ -402,7 +405,7 @@ export const NotificationCenter: React.FC = () => {
                       </p>
                       <div className="flex items-center gap-3 text-xs">
                         <span className="text-muted-foreground">
-                          Assigned to: {notification.assigneeName}
+                          Assigned to: {notification.assignee_name}
                         </span>
                         <Badge 
                           variant="outline" 
