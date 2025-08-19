@@ -89,16 +89,20 @@ export const NotificationCenter: React.FC = () => {
       // Load salary notifications (Admin only)
       if (user?.role === 'Admin') {
         const [employeesResponse, attendanceResponse, salaryResponse] = await Promise.all([
-          employeeService.list(),
-          attendanceService.list(),
+          employeeService.list(undefined, 1000),
+          attendanceService.list(undefined, undefined, undefined),
           // Add salaryService for checking paid status
           (await import('@/lib/database')).salaryService.list()
         ]);
 
+        const employees = (employeesResponse.data || []).map((e: any) => ({ ...e, $id: e.id }));
+        const attendance = (attendanceResponse.data || []).map((a: any) => ({ ...a, $id: a.id }));
+        const salaries = (salaryResponse.data || []).map((s: any) => ({ ...s, $id: s.id }));
+
         const salaryNotifications: SalaryNotification[] = [];
         const currentDateObj = new Date();
 
-        for (const employee of employeesResponse.documents) {
+        for (const employee of employees) {
           if (employee.salaryDate) {
             const salaryDay = parseInt(employee.salaryDate);
             // Find current and previous salary date window
@@ -112,7 +116,7 @@ export const NotificationCenter: React.FC = () => {
             prevSalaryDate.setMonth(currentSalaryDate.getMonth() - 1);
 
             // Attendance window: prevSalaryDate (exclusive) to currentSalaryDate (inclusive)
-            const attendanceWindow = attendanceResponse.documents.filter((att: any) => {
+            const attendanceWindow = attendance.filter((att: any) => {
               if (att.employeeId !== employee.$id) return false;
               const attDate = new Date(att.date);
               return attDate > prevSalaryDate && attDate <= currentSalaryDate;
@@ -124,7 +128,7 @@ export const NotificationCenter: React.FC = () => {
 
             // Check if salary is already paid for this month
             const currentMonth = now.toISOString().slice(0, 7);
-            const paidSalary = salaryResponse.documents.find(
+            const paidSalary = salaries.find(
               (s: any) => s.employeeId === employee.$id && s.month === currentMonth && s.status === 'Paid'
             );
 
@@ -153,9 +157,11 @@ export const NotificationCenter: React.FC = () => {
         ? await taskService.list()
         : await taskService.getByAssignee(user?.$id || '');
 
+      const tasks = (tasksResponse.data || []).map((t: any) => ({ ...t, $id: t.id, $createdAt: t.created_at }));
+
       // For employees: Show new tasks assigned to them since last check
       if (user?.role !== 'Admin') {
-        const newTaskNotifications: NewTaskNotification[] = tasksResponse.documents
+        const newTaskNotifications: NewTaskNotification[] = tasks
           .filter((task: any) => {
             const taskCreatedAt = new Date(task.$createdAt);
             const lastCheck = new Date(lastCheckTime);
@@ -175,7 +181,7 @@ export const NotificationCenter: React.FC = () => {
 
       // For admin: Show new tasks created since last check
       if (user?.role === 'Admin') {
-        const newTaskNotifications: NewTaskNotification[] = tasksResponse.documents
+        const newTaskNotifications: NewTaskNotification[] = tasks
           .filter((task: any) => {
             const taskCreatedAt = new Date(task.$createdAt);
             const lastCheck = new Date(lastCheckTime);
@@ -194,7 +200,7 @@ export const NotificationCenter: React.FC = () => {
       }
 
       // Overdue tasks for all users
-      const taskNotifications: TaskNotification[] = tasksResponse.documents
+      const taskNotifications: TaskNotification[] = tasks
         .filter((task: any) => {
           const dueDate = new Date(task.dueDate);
           const isOverdue = task.status !== 'completed' && dueDate < currentDate;

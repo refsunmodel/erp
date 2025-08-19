@@ -10,16 +10,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Plus, Search, Edit, Users, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { attendanceService, employeeService, laminationService } from '@/lib/database';
+import { attendanceService, employeeService } from '@/lib/database';
 
 interface AttendanceRecord {
   $id: string;
-  employeeId: string;
-  employeeName: string;
+  employee_id: string;
+  employee_name: string;
   date: string;
   status: 'Present' | 'Absent';
-  dayType: 'Full Day' | 'Half Day';
-  markedBy: string;
+  day_type: 'Full Day' | 'Half Day';
+  marked_by: string;
   $createdAt: string;
 }
 
@@ -46,9 +46,9 @@ export const Attendance: React.FC = () => {
   const { toast } = useToast();
 
   const [attendanceData, setAttendanceData] = useState({
-    employeeId: '',
+    employee_id: '',
     status: 'Present' as AttendanceRecord['status'],
-    dayType: 'Full Day' as AttendanceRecord['dayType']
+    day_type: 'Full Day' as AttendanceRecord['day_type']
   });
 
  
@@ -59,22 +59,22 @@ export const Attendance: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
+      // Remove laminationService.list() from Promise.all
       const [attendanceResponse, employeesResponse] = await Promise.all([
         attendanceService.list(undefined, selectedDate, undefined),
-        employeeService.list(),
-        laminationService.list()
+        employeeService.list()
       ]);
 
       // Filter employees based on user role
-      let filteredEmployees = employeesResponse.documents;
+      let filteredEmployees = employeesResponse.data || [];
       if (user?.role === 'Manager') {
         // Manager can manage all employees except other managers and admin
-        filteredEmployees = employeesResponse.documents.filter((emp: any) => 
+        filteredEmployees = filteredEmployees.filter((emp: any) => 
           emp.role !== 'Admin' && emp.role !== 'Manager'
         );
       }
 
-      setAttendanceRecords(attendanceResponse.documents as unknown as AttendanceRecord[]);
+      setAttendanceRecords(attendanceResponse.data as unknown as AttendanceRecord[]);
       setEmployees(filteredEmployees as unknown as Employee[]);
      
     } catch (error: any) {
@@ -93,22 +93,22 @@ export const Attendance: React.FC = () => {
     setSubmitting(true);
 
     try {
-      const employee = employees.find(emp => emp.$id === attendanceData.employeeId);
+      const employee = employees.find(emp => emp.$id === attendanceData.employee_id);
       if (!employee) {
         throw new Error('Employee not found');
       }
 
       // Check if attendance already marked for this date
       const existingRecord = attendanceRecords.find(record => 
-        record.employeeId === attendanceData.employeeId && record.date === selectedDate
+        record.employee_id === attendanceData.employee_id && record.date === selectedDate
       );
 
       if (existingRecord) {
         // Update existing record
         await attendanceService.update(existingRecord.$id, {
           status: attendanceData.status,
-          dayType: attendanceData.dayType,
-          markedBy: user?.name || user?.email || 'Unknown'
+          day_type: attendanceData.day_type,
+          marked_by: user?.name || user?.email || 'Unknown'
         });
         toast({
           title: "Attendance Updated",
@@ -117,12 +117,12 @@ export const Attendance: React.FC = () => {
       } else {
         // Create new record
         await attendanceService.create({
-          employeeId: attendanceData.employeeId,
-          employeeName: employee.name,
+          employee_id: attendanceData.employee_id,
+          employee_name: employee.name,
           date: selectedDate,
           status: attendanceData.status,
-          dayType: attendanceData.dayType,
-          markedBy: user?.name || user?.email || 'Unknown'
+          day_type: attendanceData.day_type,
+          marked_by: user?.name || user?.email || 'Unknown'
         });
         toast({
           title: "Attendance Marked",
@@ -133,9 +133,9 @@ export const Attendance: React.FC = () => {
       await loadData();
       setIsMarkDialogOpen(false);
       setAttendanceData({
-        employeeId: '',
+        employee_id: '',
         status: 'Present',
-        dayType: 'Full Day'
+        day_type: 'Full Day'
       });
     } catch (error: any) {
       toast({
@@ -150,8 +150,8 @@ export const Attendance: React.FC = () => {
 
 
 
-  const getAttendanceForEmployee = (employeeId: string) => {
-    return attendanceRecords.find(record => record.employeeId === employeeId);
+  const getAttendanceForEmployee = (employee_id: string) => {
+    return attendanceRecords.find(record => record.employee_id === employee_id);
   };
 
   const filteredEmployees = employees.filter(employee =>
@@ -161,7 +161,7 @@ export const Attendance: React.FC = () => {
 
   const presentCount = attendanceRecords.filter(record => record.status === 'Present').length;
   const absentCount = attendanceRecords.filter(record => record.status === 'Absent').length;
-  const halfDayCount = attendanceRecords.filter(record => record.dayType === 'Half Day').length;
+  const halfDayCount = attendanceRecords.filter(record => record.day_type === 'Half Day').length;
 
   if (loading) {
     return (
@@ -199,8 +199,8 @@ export const Attendance: React.FC = () => {
                 <div className="space-y-2">
                   <Label htmlFor="employee">Employee</Label>
                   <Select 
-                    value={attendanceData.employeeId} 
-                    onValueChange={(value) => setAttendanceData(prev => ({ ...prev, employeeId: value }))}
+                    value={attendanceData.employee_id} 
+                    onValueChange={(value) => setAttendanceData(prev => ({ ...prev, employee_id: value }))}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select employee" />
@@ -238,11 +238,11 @@ export const Attendance: React.FC = () => {
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="dayType">Day Type</Label>
+                    <Label htmlFor="day_type">Day Type</Label>
                     <Select 
-                      value={attendanceData.dayType} 
-                      onValueChange={(value: AttendanceRecord['dayType']) => 
-                        setAttendanceData(prev => ({ ...prev, dayType: value }))
+                      value={attendanceData.day_type} 
+                      onValueChange={(value: AttendanceRecord['day_type']) => 
+                        setAttendanceData(prev => ({ ...prev, day_type: value }))
                       }
                     >
                       <SelectTrigger>
@@ -260,7 +260,7 @@ export const Attendance: React.FC = () => {
                   <Button type="button" variant="outline" onClick={() => setIsMarkDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={submitting || !attendanceData.employeeId}>
+                  <Button type="submit" disabled={submitting || !attendanceData.employee_id}>
                     {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                     Mark Attendance
                   </Button>
@@ -391,14 +391,14 @@ export const Attendance: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       {attendance ? (
-                        <Badge variant="outline">{attendance.dayType}</Badge>
+                        <Badge variant="outline">{attendance.day_type}</Badge>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
                     </TableCell>
                     <TableCell>
                       {attendance ? (
-                        <span className="text-sm text-gray-600">{attendance.markedBy}</span>
+                        <span className="text-sm text-gray-600">{attendance.marked_by}</span>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
@@ -409,9 +409,9 @@ export const Attendance: React.FC = () => {
                         size="sm"
                         onClick={() => {
                           setAttendanceData({
-                            employeeId: employee.$id,
+                            employee_id: employee.$id,
                             status: attendance?.status || 'Present',
-                            dayType: attendance?.dayType || 'Full Day'
+                            day_type: attendance?.day_type || 'Full Day'
                           });
                           setIsMarkDialogOpen(true);
                         }}

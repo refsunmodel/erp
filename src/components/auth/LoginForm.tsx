@@ -32,6 +32,7 @@ export const LoginForm: React.FC = () => {
       setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);
+      console.log('LoginForm: loading set to false');
     }
   };
 

@@ -1,11 +1,17 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { account, databases, DATABASE_ID, COLLECTIONS, Query } from '@/lib/appwrite';
-import { Models } from 'appwrite';
+import { supabase, TABLES } from '@/lib/appwrite';
 
-export type UserRole = 'Admin' | 'Manager' | 'Graphic Designer' | 'Printing Technician' | 'Delivery Supervisor';
+type UserRole =
+  | 'Admin'
+  | 'Manager'
+  | 'Graphic Designer'
+  | 'Printing Technician'
+  | 'Delivery Supervisor';
 
-interface User extends Models.User<Models.Preferences> {
-  role?: UserRole;
+interface User {
+  id: string;
+  email: string;
+  role: UserRole;
   storeId?: string;
   employeeData?: any;
 }
@@ -17,113 +23,147 @@ interface AuthContextType {
   loading: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  login: async () => {},
+  logout: async () => {},
+  loading: false,
+});
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
+export const useAuth = () => useContext(AuthContext);
+
+const LOCAL_STORAGE_KEY = 'cerp_user'; // just for caching user profile, not session
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Check auth on mount
     checkAuth();
+
+    // Subscribe to Supabase auth changes (login, logout, token refresh)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, _session) => {
+      checkAuth();
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
+  // Keep user cached in localStorage
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
+  }, [user]);
+
   const checkAuth = async () => {
+    setLoading(true);
     try {
-      const currentUser = await account.get();
-      console.log('Current user:', currentUser);
-      
-      // Fetch employee data from database to get role and other info
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.error('Supabase getSession error:', sessionError);
+      }
+
+      if (!session?.user) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      const supaUser = session.user;
+
+      // Look for employee record
+      let { data: employees, error: profileError } = await supabase
+        .from(TABLES.EMPLOYEES)
+        .select('*')
+        .eq('auth_user_id', supaUser.id)
+        .limit(1);
+
+      if (profileError) {
+        console.error('Supabase profile fetch error:', profileError);
+      }
+
       let employeeData = null;
       let role: UserRole = 'Graphic Designer';
       let storeId: string | undefined;
 
-      try {
-        const employeeResponse = await databases.listDocuments(
-          DATABASE_ID,
-          COLLECTIONS.EMPLOYEES,
-          [Query.equal('authUserId', currentUser.$id)]
-        );
+      if (employees && employees.length > 0) {
+        employeeData = employees[0];
+        role = employeeData.role;
+        storeId = employeeData.store_id;
+      } else {
+        // fallback: assign role by email if known
+        const adminEmails = ['admin@arunoffset.com', 'admin@company.com'];
+        const managerEmails = ['reception@arunoffset.com', 'manager@arunoffset.com'];
 
-        if (employeeResponse.documents.length > 0) {
-          employeeData = employeeResponse.documents[0];
-          role = employeeData.role;
-          storeId = employeeData.storeId;
-        } else {
-          // Fallback for demo purposes - assign role based on email
-          if (currentUser.email === 'admin@company.com') {
-            role = 'Admin';
-          } else if (currentUser.email.includes('manager')) {
-            role = 'Manager';
-          }
-        }
-      } catch (error) {
-        console.log('Could not fetch employee data:', error);
-        // Fallback role assignment
-        if (currentUser.email === 'admin@company.com') {
+        if (adminEmails.includes(supaUser.email ?? '')) {
           role = 'Admin';
-        } else if (currentUser.email.includes('manager')) {
+        } else if (managerEmails.includes(supaUser.email ?? '')) {
           role = 'Manager';
+        } else {
+          role = 'Graphic Designer';
         }
       }
 
-      const userWithRole = {
-        ...currentUser,
+      const userObj: User = {
+        id: supaUser.id,
+        email: supaUser.email ?? '',
         role,
         storeId,
-        employeeData
+        employeeData,
       };
-      
-      setUser(userWithRole);
+
+      setUser(userObj);
+      console.log('AuthContext: setUser', userObj);
     } catch (error) {
-      console.log('No active session:', error);
       setUser(null);
+      console.error('AuthContext checkAuth error:', error);
     } finally {
       setLoading(false);
     }
   };
 
   const login = async (email: string, password: string) => {
+    setLoading(true);
     try {
-      // First, try to delete any existing session
-      try {
-        await account.deleteSession('current');
-      } catch (e) {
-        // Ignore if no session exists
-        console.log('No existing session to delete');
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      if (data?.user) {
+        await checkAuth(); // refresh user object
       }
-
-      // Create new session
-      const session = await account.createEmailPasswordSession(email, password);
-      console.log('Login successful:', session);
-      
-      // Get user details
-      await checkAuth();
     } catch (error: any) {
-      console.error('Login error:', error);
       throw new Error(error.message || 'Login failed. Please check your credentials.');
+    } finally {
+      setLoading(false);
     }
   };
 
   const logout = async () => {
     try {
-      await account.deleteSession('current');
+      await supabase.auth.signOut();
       setUser(null);
     } catch (error) {
-      console.error('Logout error:', error);
-      // Even if logout fails, clear the user state
-      setUser(null);
+      console.error('AuthContext logout error:', error);
     }
   };
 
-  const value = {
+  const value: AuthContextType = {
     user,
     login,
     logout,

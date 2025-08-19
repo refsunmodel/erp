@@ -186,7 +186,7 @@ export const Salary: React.FC = () => {
               <div className="text-center p-4 bg-blue-50 rounded-lg">
                 <p className="text-sm text-gray-600">Base Salary</p>
                 <p className="text-xl font-bold text-blue-600">
-                  {formatSalaryAmount(currentMonthSalary.baseSalary)}
+                  {formatSalaryAmount(currentMonthSalary.base_salary)}
                 </p>
               </div>
               <div className="text-center p-4 bg-green-50 rounded-lg">
@@ -263,7 +263,7 @@ export const Salary: React.FC = () => {
                     </TableCell>
                     {user?.role === 'Admin' && (
                       <>
-                        <TableCell>{formatSalaryAmount(salary.baseSalary)}</TableCell>
+                        <TableCell>{formatSalaryAmount(salary.base_salary)}</TableCell>
                         <TableCell className="text-green-600">
                           +{formatSalaryAmount(salary.overtime)}
                         </TableCell>

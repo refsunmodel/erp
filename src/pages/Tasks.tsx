@@ -16,25 +16,25 @@ import { Dialog as TaskDetailDialog, DialogContent as TaskDetailDialogContent, D
 
 interface Task {
   $id: string;
-  orderNo?: string;
+  order_no?: string;
   title: string;
   description: string;
-  taskType?: 'designing' | 'printing' | 'delivery';
-  assigneeId: string;
-  assigneeName: string;
-  dueDate: string;
-  dueTime?: string;
+  task_type?: 'designing' | 'printing' | 'delivery';
+  assignee_id: string;
+  assignee_name: string;
+  due_date: string;
+  due_time?: string;
   status: 'pending' | 'in-progress' | 'completed' | 'overdue' |  'delivered' |'not-delivered';
   priority: 'low' | 'medium' | 'high';
-  createdBy: string;
-  fileUrl?: string;
-  customerPhone?: string;
-  printingType?: string;
-  workflowStage?: 'designing' | 'printing' | 'delivery' | 'completed';
-  originalOrderId?: string;
+  created_by: string;
+  file_url?: string;
+  customer_phone?: string;
+  printing_type?: string;
+  workflow_stage?: 'designing' | 'printing' | 'delivery' | 'completed';
+  original_order_id?: string;
   $createdAt: string;
-  parentTaskId?: string; // Add 'parentTaskId' to Task interface for workflow linking
-  lastUpdated?: string; // Add lastUpdated field
+  parent_task_id?: string; // Add 'parent_task_id' to Task interface for workflow linking
+  last_updated?: string; // Add last_updated field
 }
 
 interface Employee {
@@ -66,22 +66,22 @@ export const Tasks: React.FC = () => {
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
-    orderNo: '',
+    order_no: '',
     title: '',
     description: '',
-    taskType: 'designing' as Task['taskType'],
-    assigneeId: '',
-    assigneeName: '',
-    dueDate: '',
-    dueTime: '',
+    task_type: 'designing' as Task['task_type'],
+    assignee_id: '',
+    assignee_name: '',
+    due_date: '',
+    due_time: '',
     priority: 'medium' as Task['priority'],
-    fileUrl: '',
-    customerPhone: '',
-    printingType: ''
+    file_url: '',
+    customer_phone: '',
+    printing_type: ''
   });
 
   const [searchTerm, setSearchTerm] = useState(""); // <-- Add search state
-  const [taskTypeFilter, setTaskTypeFilter] = useState<string>('all'); // Add filter for task type
+  const [task_typeFilter, settask_typeFilter] = useState<string>('all'); // Add filter for task type
 
   // Add canCreateTask logic
   // Admin, Manager, and Graphic Designer can create tasks
@@ -102,12 +102,12 @@ export const Tasks: React.FC = () => {
       loadEmployees();
     }
 
-    // Set default taskType and filter for Graphic Designer
+    // Set default task_type and filter for Graphic Designer
     if (user?.role === 'Graphic Designer') {
       setFormData(prev => ({
         ...prev,
-        taskType: 'printing',
-        assigneeId: user.$id // Only allow self-assignment
+        task_type: 'printing',
+        assignee_id: user.employeeData?.auth_user_id || '' // Use auth_user_id for self-assignment
       }));
     }
   }, [user]);
@@ -115,30 +115,16 @@ export const Tasks: React.FC = () => {
   const loadTasks = async () => {
     try {
       setLoading(true);
-      let response;
-      if (user?.role === 'Admin' || user?.role === 'Manager') {
-        response = await taskService.list();
-      } else {
-        response = await taskService.getByAssignee(user?.$id || '');
-      }
-      // Update task status based on due date
-      const tasksWithUpdatedStatus = response.documents.map((task: any) => {
-        const today = new Date();
-        const dueDate = new Date(task.dueDate);
-        if (task.status !== 'completed' && task.status !== 'delivered' && dueDate < today) {
-          return { ...task, status: 'overdue' };
-        }
-        return task;
-      });
-      // Remove delivered/not-delivered tasks for Delivery Supervisor
-      let filteredTasks = tasksWithUpdatedStatus;
-      if (user?.role === 'Delivery Supervisor') {
-        filteredTasks = filteredTasks.filter((t: any) =>
-          t.taskType === 'delivery' &&
-          (t.status === 'pending' || t.status === 'in-progress')
-        );
-      }
-      setTasks(filteredTasks as Task[]);
+      // If you want to filter by assignee, use auth_user_id, not $id or email
+      // Example: const response = await taskService.list(user?.employeeData?.auth_user_id, 1000);
+      const response = await taskService.list(undefined, 1000); // or pass auth_user_id if needed
+      // Map Supabase data to expected fields
+      const tasks = (response.data || []).map((t: any) => ({
+        ...t,
+        $id: t.$id,
+        $createdAt: t.$createdAt,
+      }));
+      setTasks(tasks);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -153,13 +139,13 @@ export const Tasks: React.FC = () => {
   const loadEmployees = async () => {
     try {
       const response = await employeeService.list();
-      let validEmployees = response.documents.filter((emp: any) => emp.authUserId);
+      let validEmployees = (response.data || []).filter((emp: any) => emp.authUserId);
 
       // Count pending/in-progress tasks for each employee
       const allTasks = await taskService.list();
       validEmployees = validEmployees.map((emp: any) => {
-        const empTasks = allTasks.documents.filter(
-          (t: any) => t.assigneeId === emp.authUserId
+        const empTasks = (allTasks.data || []).filter(
+          (t: any) => t.assignee_id === emp.authUserId
         );
         const pendingTasks = empTasks.filter((t: any) => t.status === 'pending').length;
         const inProgressTasks = empTasks.filter((t: any) => t.status === 'in-progress').length;
@@ -172,7 +158,7 @@ export const Tasks: React.FC = () => {
     }
   };
 
-  // Filtering logic (filter by createdAt, not dueDate)
+  // Filtering logic (filter by createdAt, not due_date)
   const filterTasksByDate = (tasks: Task[]) => {
     if (!filter || filter === 'lifetime') return tasks;
     const now = new Date();
@@ -214,38 +200,37 @@ export const Tasks: React.FC = () => {
     setSubmitting(true);
 
     try {
-      // Remove duplicate orderNo check
-
-      const selectedEmployee = employees.find(emp => emp.$id === formData.assigneeId);
+      // Always use authUserId for assignee_id (never email or $id)
+      const selectedEmployee = employees.find(emp => emp.$id === formData.assignee_id);
 
       if (!selectedEmployee || !selectedEmployee.authUserId) {
         throw new Error('Selected employee does not have a valid user account');
       }
 
       const taskData = {
-        orderNo: formData.orderNo || undefined,
+        order_no: formData.order_no || undefined,
         title: formData.title,
         description: formData.description,
-        taskType: formData.taskType,
-        workflowStage: formData.taskType,
-        assigneeId: selectedEmployee.authUserId,
-        assigneeName: selectedEmployee.name,
-        dueDate: formData.dueDate,
-        dueTime: formData.dueTime,
+        task_type: formData.task_type,
+        workflow_stage: formData.task_type,
+        assignee_id: selectedEmployee.authUserId, // <-- must be a UUID
+        assignee_name: selectedEmployee.name,
+        due_date: formData.due_date,
+        due_time: formData.due_time,
         priority: formData.priority,
         status: 'pending',
-        createdBy: user?.name || user?.email || 'admin',
-        fileUrl: formData.fileUrl,
-        customerPhone: formData.customerPhone,
-        printingType: formData.printingType,
-        lastUpdated: new Date().toISOString(), // Set initial lastUpdated
+        created_by: user?.employeeData?.auth_user_id || user?.id || null, // Use a UUID or null
+        file_url: formData.file_url,
+        customer_phone: formData.customer_phone,
+        printing_type: formData.printing_type,
+        last_updated: new Date().toISOString(),
       };
 
       await taskService.create(taskData);
 
       toast({
         title: "Task Created",
-        description: `Task "${taskData.title}" assigned to ${taskData.assigneeName}`,
+        description: `Task "${taskData.title}" assigned to ${taskData.assignee_name}`,
       });
 
       await loadTasks();
@@ -263,18 +248,18 @@ export const Tasks: React.FC = () => {
 
   const resetForm = () => {
     setFormData({
-      orderNo: '',
+      order_no: '',
       title: '',
       description: '',
-      taskType: 'designing',
-      assigneeId: '',
-      assigneeName: '',
-      dueDate: '',
-      dueTime: '',
+      task_type: 'designing',
+      assignee_id: '',
+      assignee_name: '',
+      due_date: '',
+      due_time: '',
       priority: 'medium',
-      fileUrl: '',
-      customerPhone: '',
-      printingType: ''
+      file_url: '',
+      customer_phone: '',
+      printing_type: ''
     });
     setIsAddDialogOpen(false);
   };
@@ -284,8 +269,8 @@ export const Tasks: React.FC = () => {
       const task = tasks.find(t => t.$id === taskId);
       if (!task) return;
 
-      // Update the task status and lastUpdated
-      await taskService.update(taskId, { status: newStatus, lastUpdated: new Date().toISOString() });
+      // Update the task status and last_updated
+      await taskService.update(taskId, { status: newStatus, last_updated: new Date().toISOString() });
 
       // If delivered or not-delivered, remove from list for Delivery Supervisor
       if (
@@ -302,7 +287,7 @@ export const Tasks: React.FC = () => {
       }
 
       // If task is being completed and it's a printing task, create delivery task
-      if (newStatus === 'completed' && task.taskType === 'printing') {
+      if (newStatus === 'completed' && task.task_type === 'printing') {
         await handleWorkflowProgression(task);
       }
 
@@ -323,60 +308,49 @@ export const Tasks: React.FC = () => {
 
   const handleWorkflowProgression = async (task: Task) => {
     try {
-      // Don't create new tasks if this is already a delivery task being completed
-      if (task.taskType === 'delivery') {
+      if (task.task_type === 'delivery') {
         return;
       }
-      
-      // Find available delivery supervisors
       const deliverySupervisors = employees.filter(emp => emp.role === 'Delivery Supervisor');
-      
       if (deliverySupervisors.length > 0) {
         let nextAssignee;
-        
         if (deliverySupervisors.length === 1) {
           nextAssignee = deliverySupervisors[0];
         } else {
-          // Find the delivery supervisor with least pending tasks
           const supervisorWorkloads = await Promise.all(
             deliverySupervisors.map(async (supervisor) => {
+              // Use authUserId for getByAssignee
               const supervisorTasks = await taskService.getByAssignee(supervisor.authUserId);
-              const pendingCount = supervisorTasks.documents.filter((t: any) => 
+              const pendingCount = (supervisorTasks.data || []).filter((t: any) =>
                 t.status === 'pending' || t.status === 'in-progress'
               ).length;
               return { supervisor, pendingCount };
             })
           );
-          
-          // Sort by workload and pick the one with least tasks
           supervisorWorkloads.sort((a, b) => a.pendingCount - b.pendingCount);
           nextAssignee = supervisorWorkloads[0].supervisor;
         }
-        
         if (nextAssignee && nextAssignee.authUserId) {
-          // Create delivery task
           const deliveryTaskData = {
             title: `Delivery - ${task.title}`,
             description: task.description,
-            taskType: 'delivery' as Task['taskType'],
-            workflowStage: 'delivery' as Task['workflowStage'],
-            assigneeId: nextAssignee.authUserId,
-            assigneeName: nextAssignee.name,
+            task_type: 'delivery' as Task['task_type'],
+            workflow_stage: 'delivery' as Task['workflow_stage'],
+            assignee_id: nextAssignee.authUserId,
+            assignee_name: nextAssignee.name,
             status: 'pending' as Task['status'],
             priority: task.priority,
-            dueDate: task.dueDate,
-            dueTime: task.dueTime,
-            createdBy: user?.name || user?.email || 'System',
-            originalOrderId: task.originalOrderId || task.$id,
-            parentTaskId: task.$id, // Link to parent task
-            fileUrl: task.fileUrl,
-            customerPhone: task.customerPhone,
-            printingType: task.printingType,
-            lastUpdated: new Date().toISOString(), // Set lastUpdated for delivery task
+            due_date: task.due_date,
+            due_time: task.due_time,
+            created_by: user?.name || user?.email || 'System',
+            original_order_id: task.original_order_id || task.$id,
+            parent_task_id: task.$id,
+            file_url: task.file_url,
+            customer_phone: task.customer_phone,
+            printing_type: task.printing_type,
+            last_updated: new Date().toISOString(),
           };
-          
           await taskService.create(deliveryTaskData);
-          
           toast({
             title: "Task Auto-Assigned",
             description: `Delivery task automatically assigned to ${nextAssignee.name}`,
@@ -402,19 +376,20 @@ export const Tasks: React.FC = () => {
   const handleAssignConfirm = async () => {
     if (!assignTask || !assignType || !assignEmployeeId) return;
     try {
+      // Find employee by $id, but use authUserId for assignment
       const nextEmp = employees.find(emp => emp.$id === assignEmployeeId);
       if (!nextEmp || !nextEmp.authUserId) throw new Error('Select a valid employee');
       const updateData: Partial<Task> = {
-        taskType: assignType,
-        workflowStage: assignType,
-        assigneeId: nextEmp.authUserId,
-        assigneeName: nextEmp.name,
+        task_type: assignType,
+        workflow_stage: assignType,
+        assignee_id: nextEmp.authUserId, // Use authUserId for assignment
+        assignee_name: nextEmp.name,
         status: 'pending',
-        parentTaskId: assignTask.$id,
+        parent_task_id: assignTask.$id,
       };
       if (assignType === 'delivery') {
-        updateData.dueDate = '';
-        updateData.dueTime = '';
+        updateData.due_date = '';
+        updateData.due_time = '';
       }
       await taskService.update(assignTask.$id, updateData);
       toast({
@@ -437,23 +412,21 @@ export const Tasks: React.FC = () => {
 
   const handleEditTask = (task: Task) => {
     setEditingTask(task);
-    
     // Find the employee by authUserId (not by $id)
-    const assignedEmployee = employees.find(emp => emp.authUserId === task.assigneeId);
-    
+    const assignedEmployee = employees.find(emp => emp.authUserId === task.assignee_id);
     setFormData({
-      orderNo: task.orderNo || '',
+      order_no: task.order_no || '',
       title: task.title,
       description: task.description,
-      taskType: task.taskType || 'designing',
-      assigneeId: assignedEmployee?.$id || '',
-      assigneeName: task.assigneeName,
-      dueDate: task.dueDate,
-      dueTime: task.dueTime || '',
+      task_type: task.task_type || 'designing',
+      assignee_id: assignedEmployee?.$id || '', // Still use $id for UI selection, but use authUserId for DB
+      assignee_name: task.assignee_name,
+      due_date: task.due_date,
+      due_time: task.due_time || '',
       priority: task.priority || 'medium',
-      fileUrl: task.fileUrl || '',
-      customerPhone: task.customerPhone || '',
-      printingType: task.printingType || ''
+      file_url: task.file_url || '',
+      customer_phone: task.customer_phone || '',
+      printing_type: task.printing_type || ''
     });
     setIsEditDialogOpen(true);
   };
@@ -461,35 +434,31 @@ export const Tasks: React.FC = () => {
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingTask) return;
-    
     setSubmitting(true);
-    
     try {
-      const selectedEmployee = employees.find(emp => emp.$id === formData.assigneeId);
-      
+      const selectedEmployee = employees.find(emp => emp.$id === formData.assignee_id);
       if (!selectedEmployee || !selectedEmployee.authUserId) {
         throw new Error('Selected employee does not have a valid user account');
       }
-      
       const updateData = {
         title: formData.title,
         description: formData.description,
-        taskType: formData.taskType,
-        workflowStage: formData.taskType, // Update workflow stage to match task type
-        assigneeId: selectedEmployee.authUserId,
-        assigneeName: selectedEmployee.name,
-        status: 'pending', // Reset status to pending when reassigning
-        dueDate: formData.dueDate,
-        dueTime: formData.dueTime,
+        task_type: formData.task_type,
+        workflow_stage: formData.task_type,
+        assignee_id: selectedEmployee.authUserId, // Use authUserId for assignment
+        assignee_name: selectedEmployee.name,
+        status: 'pending',
+        due_date: formData.due_date,
+        due_time: formData.due_time,
         priority: formData.priority,
-        fileUrl: formData.fileUrl,
-        customerPhone: formData.customerPhone,
-        printingType: formData.printingType,
-        lastUpdated: new Date().toISOString(), // Update lastUpdated on edit
+        file_url: formData.file_url,
+        customer_phone: formData.customer_phone,
+        printing_type: formData.printing_type,
+        last_updated: new Date().toISOString(),
       };
 
       await taskService.update(editingTask.$id, updateData);
-      
+
       toast({
         title: "Task Updated",
         description: `Task "${updateData.title}" has been updated successfully`,
@@ -570,24 +539,24 @@ export const Tasks: React.FC = () => {
       if (!searchTerm.trim()) return true;
       const term = searchTerm.trim().toLowerCase();
       return (
-        (task.orderNo || "").toLowerCase().includes(term) ||
+        (task.order_no || "").toLowerCase().includes(term) ||
         (task.title || "").toLowerCase().includes(term) ||
-        (task.assigneeName || "").toLowerCase().includes(term) ||
+        (task.assignee_name || "").toLowerCase().includes(term) ||
         (task.description || "").toLowerCase().includes(term) ||
-        (task.customerPhone || "").toLowerCase().includes(term)
+        (task.customer_phone || "").toLowerCase().includes(term)
       );
     })
     // Admin: filter by task type if selected
     .filter(task => {
-      if (user?.role === 'Admin' && taskTypeFilter !== 'all') {
-        return task.taskType === taskTypeFilter;
+      if (user?.role === 'Admin' && task_typeFilter !== 'all') {
+        return task.task_type === task_typeFilter;
       }
       return true;
     })
     // For Delivery Supervisor, only show pending/in-progress delivery tasks
     .filter(task => {
       if (user?.role === 'Delivery Supervisor') {
-        return task.taskType === 'delivery' && (
+        return task.task_type === 'delivery' && (
           task.status === 'pending' ||
           task.status === 'in-progress'
         );
@@ -617,8 +586,8 @@ export const Tasks: React.FC = () => {
           {/* Task type filter for Admin only */}
           {user?.role === 'Admin' && (
             <Select
-              value={taskTypeFilter}
-              onValueChange={setTaskTypeFilter}
+              value={task_typeFilter}
+              onValueChange={settask_typeFilter}
               defaultValue="all"
             >
               <SelectTrigger className="w-40 ml-2">
@@ -673,11 +642,11 @@ export const Tasks: React.FC = () => {
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="orderNo">Order No</Label>
+                  <Label htmlFor="order_no">Order No</Label>
                   <Input
-                    id="orderNo"
-                    value={formData.orderNo}
-                    onChange={(e) => setFormData(prev => ({ ...prev, orderNo: e.target.value }))}
+                    id="order_no"
+                    value={formData.order_no}
+                    onChange={(e) => setFormData(prev => ({ ...prev, order_no: e.target.value }))}
                     placeholder="Auto-generated if empty"
                   />
                 </div>
@@ -704,10 +673,10 @@ export const Tasks: React.FC = () => {
                 <div className="grid grid-cols-3 gap-4">
                   {/* Task Type: Designer can only select printing and cannot change */}
                   <div className="space-y-2">
-                    <Label htmlFor="taskType">Task Type</Label>
+                    <Label htmlFor="task_type">Task Type</Label>
                     <Select
-                      value={formData.taskType}
-                      onValueChange={(value: string) => setFormData(prev => ({ ...prev, taskType: value as Task['taskType'] }))}
+                      value={formData.task_type}
+                      onValueChange={(value: string) => setFormData(prev => ({ ...prev, task_type: value as Task['task_type'] }))}
                       disabled={user?.role === 'Graphic Designer'}
                     >
                       <SelectTrigger>
@@ -730,10 +699,8 @@ export const Tasks: React.FC = () => {
                   <div className="space-y-2">
                     <Label htmlFor="assignee">Assign To</Label>
                     <Select
-                      value={formData.assigneeId}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, assigneeId: value }))}
-                      // Only disable for designer+printing if you want to restrict assignment to self
-                     
+                      value={formData.assignee_id}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, assignee_id: value }))}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select employee" />
@@ -742,13 +709,12 @@ export const Tasks: React.FC = () => {
                         {employees
                           .filter(emp => {
                             // Filter by task type for all roles
-                            if (formData.taskType === 'designing') return emp.role === 'Graphic Designer';
-                            if (formData.taskType === 'printing') return emp.role === 'Printing Technician';
-                            if (formData.taskType === 'delivery') return emp.role === 'Delivery Supervisor';
+                            if (formData.task_type === 'designing') return emp.role === 'Graphic Designer';
+                            if (formData.task_type === 'printing') return emp.role === 'Printing Technician';
+                            if (formData.task_type === 'delivery') return emp.role === 'Delivery Supervisor';
                             return true;
                           })
-                          // Only restrict to self for designer+printing if you want to enforce that
-                         
+                          .filter(employee => !!employee.$id) // Only employees with a non-empty $id
                           .map(employee => (
                             <SelectItem key={employee.$id} value={employee.$id}>
                               <div className="flex flex-col">
@@ -762,19 +728,16 @@ export const Tasks: React.FC = () => {
                               </div>
                             </SelectItem>
                           ))}
-                        {employees.length === 0 && (
-                          <SelectItem value="" disabled>No employees found</SelectItem>
-                        )}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="dueDate">Due Date</Label>
+                    <Label htmlFor="due_date">Due Date</Label>
                     <Input
-                      id="dueDate"
+                      id="due_date"
                       type="date"
-                      value={formData.dueDate}
-                      onChange={(e) => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
+                      value={formData.due_date}
+                      onChange={(e) => setFormData(prev => ({ ...prev, due_date: e.target.value }))}
                       required
                       min={new Date().toISOString().split('T')[0]}
                     />
@@ -782,12 +745,12 @@ export const Tasks: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="dueTime">Due Time</Label>
+                    <Label htmlFor="due_time">Due Time</Label>
                     <Input
-                      id="dueTime"
+                      id="due_time"
                       type="time"
-                      value={formData.dueTime}
-                      onChange={(e) => setFormData(prev => ({ ...prev, dueTime: e.target.value }))}
+                      value={formData.due_time}
+                      onChange={(e) => setFormData(prev => ({ ...prev, due_time: e.target.value }))}
                     />
                   </div>
                   <div className="space-y-2">
@@ -807,14 +770,14 @@ export const Tasks: React.FC = () => {
                   </div>
                 </div>
                 {/* Printing Task Specific Fields: Only Printing Type */}
-                {formData.taskType === 'printing' && (
+                {formData.task_type === 'printing' && (
                   <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
                     <h4 className="font-medium">Printing Details</h4>
                     <div className="space-y-2">
-                      <Label htmlFor="printingType">Printing Type</Label>
+                      <Label htmlFor="printing_type">Printing Type</Label>
                       <Select
-                        value={formData.printingType}
-                        onValueChange={(value) => setFormData(prev => ({ ...prev, printingType: value }))}
+                        value={formData.printing_type}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, printing_type: value }))}
                         required
                       >
                         <SelectTrigger>
@@ -830,21 +793,21 @@ export const Tasks: React.FC = () => {
                   </div>
                 )}
                 <div className="space-y-2">
-                  <Label htmlFor="fileUrl">File/Google Drive Link (Optional)</Label>
+                  <Label htmlFor="file_url">File/Google Drive Link (Optional)</Label>
                   <Input
-                    id="fileUrl"
+                    id="file_url"
                     type="url"
-                    value={formData.fileUrl}
-                    onChange={(e) => setFormData(prev => ({ ...prev, fileUrl: e.target.value }))}
+                    value={formData.file_url}
+                    onChange={(e) => setFormData(prev => ({ ...prev, file_url: e.target.value }))}
                     placeholder="https://drive.google.com/..."
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="customerPhone">Customer Phone Number (Optional)</Label>
+                  <Label htmlFor="customer_phone">Customer Phone Number (Optional)</Label>
                   <Input
-                    id="customerPhone"
-                    value={formData.customerPhone}
-                    onChange={(e) => setFormData(prev => ({ ...prev, customerPhone: e.target.value }))}
+                    id="customer_phone"
+                    value={formData.customer_phone}
+                    onChange={(e) => setFormData(prev => ({ ...prev, customer_phone: e.target.value }))}
                     placeholder="Enter customer number"
                   />
                 </div>
@@ -852,7 +815,7 @@ export const Tasks: React.FC = () => {
                   <Button type="button" variant="outline" onClick={resetForm}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={submitting || !formData.assigneeId}>
+                  <Button type="submit" disabled={submitting || !formData.assignee_id}>
                     {submitting ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -917,7 +880,7 @@ export const Tasks: React.FC = () => {
                   {filteredTasks.map((task) => (
                     <TableRow key={task.$id} className="min-h-[60px]">
                       <TableCell>
-                        <span className="font-mono text-xs sm:text-sm">{task.orderNo || task.$id.slice(-6).toUpperCase()}</span>
+                        <span className="font-mono text-xs sm:text-sm">{task.order_no || task.$id.slice(-6).toUpperCase()}</span>
                       </TableCell>
                       <TableCell>
                         <div style={{ maxWidth: 220, overflow: 'visible', whiteSpace: 'normal', wordBreak: 'break-word' }}>
@@ -927,9 +890,9 @@ export const Tasks: React.FC = () => {
                               {task.description}
                             </p>
                           )}
-                          {task.fileUrl && (
+                          {task.file_url && (
                             <a 
-                              href={task.fileUrl} 
+                              href={task.file_url} 
                               target="_blank" 
                               rel="noopener noreferrer"
                               className="text-xs text-blue-600 hover:underline mt-1 block hidden sm:inline"
@@ -937,9 +900,9 @@ export const Tasks: React.FC = () => {
                               📎 View Attached File
                             </a>
                           )}
-                          {task.customerPhone && (
+                          {task.customer_phone && (
                             <p className="text-xs text-green-600 mt-1 truncate">
-                              📞 Customer: {task.customerPhone}
+                              📞 Customer: {task.customer_phone}
                             </p>
                           )}
                         </div>
@@ -948,18 +911,18 @@ export const Tasks: React.FC = () => {
                         <TableCell>
                           <div className="flex items-center text-sm">
                             <User className="h-4 w-4 mr-2 text-gray-400" />
-                            <span className="truncate max-w-[100px]">{task.assigneeName}</span>
+                            <span className="truncate max-w-[100px]">{task.assignee_name}</span>
                           </div>
                         </TableCell>
                       )}
                       <TableCell>
-                        {task.taskType ? (
+                        {task.task_type ? (
                           <Badge variant="outline" className={`text-xs ${
-                            task.taskType === 'designing' ? 'border-blue-500 text-blue-700' :
-                            task.taskType === 'printing' ? 'border-green-500 text-green-700' :
+                            task.task_type === 'designing' ? 'border-blue-500 text-blue-700' :
+                            task.task_type === 'printing' ? 'border-green-500 text-green-700' :
                             'border-orange-500 text-orange-700'
                           }`}>
-                            {task.taskType.charAt(0).toUpperCase() + task.taskType.slice(1)}
+                            {task.task_type.charAt(0).toUpperCase() + task.task_type.slice(1)}
                           </Badge>
                         ) : (
                           <Badge variant="outline" className="text-xs">General</Badge>
@@ -974,9 +937,9 @@ export const Tasks: React.FC = () => {
                         <div className="flex items-center text-sm">
                           <Calendar className="h-3 w-3 mr-1 text-gray-400 hidden sm:block" />
                           <div className={task.status === 'overdue' ? 'text-red-600 font-medium' : ''}>
-                            <div className="text-xs sm:text-sm whitespace-nowrap">{new Date(task.dueDate).toLocaleDateString()}</div>
-                            {task.dueTime && (
-                              <div className="text-xs text-gray-500 hidden sm:block">{task.dueTime}</div>
+                            <div className="text-xs sm:text-sm whitespace-nowrap">{new Date(task.due_date).toLocaleDateString()}</div>
+                            {task.due_time && (
+                              <div className="text-xs text-gray-500 hidden sm:block">{task.due_time}</div>
                             )}
                           </div>
                         </div>
@@ -1009,7 +972,7 @@ export const Tasks: React.FC = () => {
                           {/* Assign to Printing/Delivery buttons */}
                           {task.status === 'completed' && (
                             <>
-                              {task.taskType === 'designing' && (user?.role === 'Graphic Designer' || user?.role === 'Manager' || user?.role === 'Admin') && (
+                              {task.task_type === 'designing' && (user?.role === 'Graphic Designer' || user?.role === 'Manager' || user?.role === 'Admin') && (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1019,7 +982,7 @@ export const Tasks: React.FC = () => {
                                   Assign to Printing
                                 </Button>
                               )}
-                              {task.taskType === 'printing' && (user?.role === 'Printing Technician' || user?.role === 'Manager' || user?.role === 'Admin') && (
+                              {task.task_type === 'printing' && (user?.role === 'Printing Technician' || user?.role === 'Manager' || user?.role === 'Admin') && (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1083,7 +1046,7 @@ export const Tasks: React.FC = () => {
                                 Edit
                               </Button>
                               <Badge variant="outline" className="text-xs hidden lg:inline-flex">
-                                Created by {task.createdBy}
+                                Created by {task.created_by}
                               </Badge>
                             </>
                           )}
@@ -1130,8 +1093,8 @@ export const Tasks: React.FC = () => {
                   <div className="space-y-2">
                     <Label htmlFor="editAssignee">Assign To</Label>
                     <Select
-                      value={formData.assigneeId}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, assigneeId: value }))}
+                      value={formData.assignee_id}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, assignee_id: value }))}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select an employee" />
@@ -1139,11 +1102,12 @@ export const Tasks: React.FC = () => {
                       <SelectContent>
                         {employees
                           .filter(emp => {
-                            if (formData.taskType === 'designing') return emp.role === 'Graphic Designer';
-                            if (formData.taskType === 'printing') return emp.role === 'Printing Technician';
-                            if (formData.taskType === 'delivery') return emp.role === 'Delivery Supervisor';
+                            if (formData.task_type === 'designing') return emp.role === 'Graphic Designer';
+                            if (formData.task_type === 'printing') return emp.role === 'Printing Technician';
+                            if (formData.task_type === 'delivery') return emp.role === 'Delivery Supervisor';
                             return true;
                           })
+                          .filter(employee => !!employee.$id) // Only employees with a non-empty $id
                           .map(employee => (
                             <SelectItem key={employee.$id} value={employee.$id}>
                               {employee.name ?? ''} ({employee.role ?? ''})
@@ -1153,10 +1117,10 @@ export const Tasks: React.FC = () => {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="editTaskType">Task Type</Label>
+                    <Label htmlFor="edittask_type">Task Type</Label>
                     <Select
-                      value={formData.taskType}
-                      onValueChange={(value: string) => setFormData(prev => ({ ...prev, taskType: value as Task['taskType'] }))}
+                      value={formData.task_type}
+                      onValueChange={(value: string) => setFormData(prev => ({ ...prev, task_type: value as Task['task_type'] }))}
                       disabled={user?.role === 'Graphic Designer'}
                     >
                       <SelectTrigger>
@@ -1177,24 +1141,24 @@ export const Tasks: React.FC = () => {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="editDueDate">Due Date</Label>
+                  <Label htmlFor="editdue_date">Due Date</Label>
                   <Input
-                    id="editDueDate"
+                    id="editdue_date"
                     type="date"
-                    value={formData.dueDate}
-                    onChange={(e) => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
+                    value={formData.due_date}
+                    onChange={(e) => setFormData(prev => ({ ...prev, due_date: e.target.value }))}
                     required
                   />
                 </div>
                 {/* Printing Task Specific Fields: Only Printing Type */}
-                {formData.taskType === 'printing' && (
+                {formData.task_type === 'printing' && (
                   <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
                     <h4 className="font-medium">Printing Details</h4>
                     <div className="space-y-2">
-                      <Label htmlFor="editPrintingType">Printing Type</Label>
+                      <Label htmlFor="editprinting_type">Printing Type</Label>
                       <Select
-                        value={formData.printingType}
-                        onValueChange={(value) => setFormData(prev => ({ ...prev, printingType: value }))}
+                        value={formData.printing_type}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, printing_type: value }))}
                         required
                       >
                         <SelectTrigger>
@@ -1210,44 +1174,44 @@ export const Tasks: React.FC = () => {
                   </div>
                 )}
                 <div className="space-y-2">
-                  <Label htmlFor="editFileUrl">File/Google Drive Link</Label>
+                  <Label htmlFor="editfile_url">File/Google Drive Link</Label>
                   <Input
-                    id="editFileUrl"
+                    id="editfile_url"
                     type="url"
-                    value={formData.fileUrl}
-                    onChange={(e) => setFormData(prev => ({ ...prev, fileUrl: e.target.value }))}
+                    value={formData.file_url}
+                    onChange={(e) => setFormData(prev => ({ ...prev, file_url: e.target.value }))}
                     placeholder="https://drive.google.com/..."
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="editCustomerPhone">Customer Phone Number</Label>
+                  <Label htmlFor="editcustomer_phone">Customer Phone Number</Label>
                   <Input
-                    id="editCustomerPhone"
-                    value={formData.customerPhone}
-                    onChange={(e) => setFormData(prev => ({ ...prev, customerPhone: e.target.value }))}
+                    id="editcustomer_phone"
+                    value={formData.customer_phone}
+                    onChange={(e) => setFormData(prev => ({ ...prev, customer_phone: e.target.value }))}
                     placeholder="Enter customer number"
                   />
                 </div>
               </>
             ) : (
-              // For other roles, show only fileUrl and customerPhone (no edit for Printing Technician)
+              // For other roles, show only file_url and customer_phone (no edit for Printing Technician)
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="editFileUrl">File/Google Drive Link</Label>
+                  <Label htmlFor="editfile_url">File/Google Drive Link</Label>
                   <Input
-                    id="editFileUrl"
+                    id="editfile_url"
                     type="url"
-                    value={formData.fileUrl}
-                    onChange={(e) => setFormData(prev => ({ ...prev, fileUrl: e.target.value }))}
+                    value={formData.file_url}
+                    onChange={(e) => setFormData(prev => ({ ...prev, file_url: e.target.value }))}
                     placeholder="https://drive.google.com/..."
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="editCustomerPhone">Customer Phone Number</Label>
+                  <Label htmlFor="editcustomer_phone">Customer Phone Number</Label>
                   <Input
-                    id="editCustomerPhone"
-                    value={formData.customerPhone}
-                    onChange={(e) => setFormData(prev => ({ ...prev, customerPhone: e.target.value }))}
+                    id="editcustomer_phone"
+                    value={formData.customer_phone}
+                    onChange={(e) => setFormData(prev => ({ ...prev, customer_phone: e.target.value }))}
                     placeholder="Enter customer number"
                   />
                 </div>
@@ -1291,7 +1255,7 @@ export const Tasks: React.FC = () => {
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Task Type</Label>
-                  <p className="text-sm text-gray-700 mt-1 capitalize">{selectedTaskDetail.taskType}</p>
+                  <p className="text-sm text-gray-700 mt-1 capitalize">{selectedTaskDetail.task_type}</p>
                 </div>
               </div>
               
@@ -1303,7 +1267,7 @@ export const Tasks: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium">Due Date</Label>
-                  <p className="text-sm text-gray-700 mt-1">{new Date(selectedTaskDetail.dueDate).toLocaleDateString()}</p>
+                  <p className="text-sm text-gray-700 mt-1">{new Date(selectedTaskDetail.due_date).toLocaleDateString()}</p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Priority</Label>
@@ -1318,35 +1282,35 @@ export const Tasks: React.FC = () => {
                 <div>
                   <Label className="text-sm font-medium">Last Updated</Label>
                   <p className="text-sm text-gray-700 mt-1">
-                    {selectedTaskDetail.lastUpdated && selectedTaskDetail.lastUpdated !== 'N/A'
-                      ? new Date(selectedTaskDetail.lastUpdated).toLocaleString()
+                    {selectedTaskDetail.last_updated && selectedTaskDetail.last_updated !== 'N/A'
+                      ? new Date(selectedTaskDetail.last_updated).toLocaleString()
                       : 'N/A'}
                   </p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Assignee</Label>
-                  <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.assigneeName}</p>
+                  <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.assignee_name}</p>
                 </div>
               </div>
               
-              {selectedTaskDetail.taskType === 'printing' && (
+              {selectedTaskDetail.task_type === 'printing' && (
                 <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
                   <h4 className="font-medium">Printing Specifications</h4>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label className="text-sm font-medium">Printing Type</Label>
-                      <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.printingType || 'Not specified'}</p>
+                      <p className="text-sm text-gray-700 mt-1">{selectedTaskDetail.printing_type || 'Not specified'}</p>
                     </div>
                   </div>
                 </div>
               )}
               
-              {selectedTaskDetail.fileUrl && (
+              {selectedTaskDetail.file_url && (
                 <div>
                   <Label className="text-sm font-medium">Attached File</Label>
                   <div className="mt-1">
                     <a 
-                      href={selectedTaskDetail.fileUrl} 
+                      href={selectedTaskDetail.file_url} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="text-blue-600 hover:underline text-sm"
@@ -1357,10 +1321,10 @@ export const Tasks: React.FC = () => {
                 </div>
               )}
               
-              {selectedTaskDetail.customerPhone && (
+              {selectedTaskDetail.customer_phone && (
                 <div>
                   <Label className="text-sm font-medium">Customer Contact</Label>
-                  <p className="text-sm text-gray-700 mt-1">📞 {selectedTaskDetail.customerPhone}</p>
+                  <p className="text-sm text-gray-700 mt-1">📞 {selectedTaskDetail.customer_phone}</p>
                 </div>
               )}
               

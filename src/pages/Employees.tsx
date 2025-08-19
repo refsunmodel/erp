@@ -13,7 +13,7 @@ import { employeeService, storeService, salaryService } from '@/lib/database';
 import { createUserAccount } from '@/lib/appwrite';
 import { useAuth } from '@/contexts/AuthContext';
 
-interface Employee {
+interface Employee { 
   $id: string;
   name: string;
   email: string;
@@ -76,17 +76,22 @@ export const Employees: React.FC = () => {
         salaryService.list()
       ]);
       
+      // Use .data instead of .documents and add fallback for empty/null
+      const employeesArr = employeesResponse.data || [];
+      const storesArr = storesResponse.data || [];
+      const salaryArr = salaryResponse.data || [];
+      
       // Map store names and last payment dates to employees
-      const employeesWithDetails = employeesResponse.documents.map((emp: any) => {
-        const store = storesResponse.documents.find((s: any) => s.$id === emp.storeId);
-        const lastSalary = salaryResponse.documents
-          .filter((s: any) => s.employeeId === emp.$id)
-          .sort((a: any, b: any) => new Date(b.$createdAt).getTime() - new Date(a.$createdAt).getTime())[0];
+      const employeesWithDetails = employeesArr.map((emp: any) => {
+        const store = storesArr.find((s: any) => s.id === emp.storeId || s.$id === emp.storeId);
+        const lastSalary = salaryArr
+          .filter((s: any) => s.employee_id === emp.$id || s.employee_id === emp.$id)
+          .sort((a: any, b: any) => new Date((b.$createdAt || b.created_at)).getTime() - new Date((a.$createdAt || a.created_at)).getTime())[0];
         
         return {
           ...emp,
           storeName: store?.name || null,
-          lastPaymentDate: lastSalary?.payDate || null,
+          lastPaymentDate: lastSalary?.payDate || lastSalary?.created_at || null,
           advancePayment: emp.advancePayment || 0 // Add advance payment to employee object
         };
       });
@@ -106,7 +111,7 @@ export const Employees: React.FC = () => {
   const loadStores = async () => {
     try {
       const response = await storeService.list();
-      setStores(response.documents as unknown as Store[]);
+      setStores((response.data || []) as unknown as Store[]);
     } catch (error: any) {
       console.error('Failed to load stores:', error);
     }
@@ -242,16 +247,16 @@ export const Employees: React.FC = () => {
       const monthlySalary = Math.round(employee.annualSalary / 12);
       
       await salaryService.create({
-        employeeId: employee.$id,
+        employee_id: employee.$id,
         employeeName: employee.name,
         month: new Date().toISOString().slice(0, 7), // YYYY-MM format
-        baseSalary: monthlySalary,
+        base_salary: monthlySalary,
         overtime: 0,
         bonus: 0,
         deductions: Math.round(monthlySalary * 0.1), // 10% deductions
-        netSalary: Math.round(monthlySalary * 0.9),
+        net_salary: Math.round(monthlySalary * 0.9),
         status: 'Paid',
-        payDate: new Date().toISOString().split('T')[0]
+        pay_date: new Date().toISOString().split('T')[0]
       });
 
       toast({

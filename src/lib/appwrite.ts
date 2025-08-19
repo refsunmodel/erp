@@ -1,50 +1,37 @@
-import { Client, Account, Databases, Storage, Query, ID } from 'appwrite';
+import { createClient } from '@supabase/supabase-js';
 
-const client = new Client();
+export const SUPABASE_URL = 'https://cnihpwshsprujrhmquis.supabase.co';
+export const SUPABASE_ANON_KEY =  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNuaWhwd3Noc3BydWpyaG1xdWlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU1MjIzMjQsImV4cCI6MjA3MTA5ODMyNH0.sFX2k9LfNxY1AwNVEdU2q_itR9qiL0_rq0yZH-ZGGjs';
 
-// You need to replace these with your actual Appwrite project details
-client
-  .setEndpoint('https://cloud.appwrite.io/v1') // Your API Endpoint
-  // .setProject('684c44cb002c7271998e'); 
-    .setProject('68a3ae9f003d65994d2b'); // Replace with your actual project ID
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-export const account = new Account(client);
-export const databases = new Databases(client);
-export const storage = new Storage(client);
-
-// Replace with your actual database ID
-// export const DATABASE_ID = '684c457200384960c942';
-export const DATABASE_ID = '68a3aeb20029a15c5adf';
-
-
-export const COLLECTIONS = {
-  USERS: 'users',
+export const TABLES = {
+  USERS: 'profiles',
   EMPLOYEES: 'employees',
-  CUSTOMERS: 'customers', 
+  CUSTOMERS: 'customers',
   STORES: 'stores',
   TASKS: 'tasks',
-  DAILY_REPORTS: 'daily-reports',
+  DAILY_REPORTS: 'daily_reports',
   CREDITS: 'credits',
   DOCUMENTS: 'documents',
   INVOICES: 'invoices',
   STATS: 'stats',
-  SALARY_RECORDS: "salary-records",
-  CHAT_MESSAGES: "chat-messages",
-  INVENTORY: "inventory",
-  ATTENDANCE: "68877fd3000f7a0f7236",
-  LAMINATION_TYPES: "68878131002b39ca4827"
+  SALARY_RECORDS: 'salary_records',
+  CHAT_MESSAGES: 'chat_messages',
+  INVENTORY: 'inventory',
+  ATTENDANCE: 'attendance',
+  LAMINATION_TYPES: 'lamination_types'
 };
 
-// Helper function to create user accounts
+// Helper function to create user accounts (sign up)
 export const createUserAccount = async (email: string, password: string, name: string) => {
-  try {
-    const user = await account.create(ID.unique(), email, password, name);
-    return user;
-  } catch (error) {
-    console.error('Error creating user account:', error);
-    throw error;
-  }
+  const { user, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { name } }
+  });
+  if (error) throw error;
+  return user;
 };
 
-export { Query, ID };
-export default client;
+export default supabase;

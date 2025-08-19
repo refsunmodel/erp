@@ -76,87 +76,67 @@ const AdminDashboard = () => {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      
-      // Load all data in parallel
       const [employees, stores, customers, tasks, reports] = await Promise.all([
-        employeeService.list(),
-        storeService.list(),
-        customerService.list(),
-        taskService.list(),
-        dailyReportService.list()
+        employeeService.list(1000),
+        storeService.list(1000),
+        customerService.list(1000),
+        taskService.list(undefined, 1000),
+        dailyReportService.list(undefined, undefined, undefined, undefined, 1000)
       ]);
+      const employeesData = (employees.data || []);
+      const storesData = (stores.data || []);
+      const customersData = (customers.data || []);
+      const tasksData = (tasks.data || []);
+      const reportsData = (reports.data || []);
 
-      // Calculate stats
-      const totalSales = reports.documents.reduce((sum: number, report: any) => sum + (report.sales || 0), 0);
-      const totalExpenses = reports.documents.reduce((sum: number, report: any) => sum + (report.expenses || 0), 0);
-      
-      // Calculate task stats by type and status
+      const totalSales = reportsData.reduce((sum: number, report: any) => sum + (report.sales || 0), 0);
+      const totalExpenses = reportsData.reduce((sum: number, report: any) => sum + (report.expenses || 0), 0);
+
       const calculatedTaskStats = {
-        designingPending: tasks.documents.filter((t: any) => 
-          t.taskType === 'designing' && t.status === 'pending'
-        ).length,
-        designingInProgress: tasks.documents.filter((t: any) => 
-          t.taskType === 'designing' && t.status === 'in-progress'
-        ).length,
-        designingCompleted: tasks.documents.filter((t: any) => 
-          t.taskType === 'designing' && (t.status === 'completed' || 
-          (t.workflowStage === 'designing' && t.status === 'completed'))
-        ).length,
-        printingPending: tasks.documents.filter((t: any) => 
-          t.taskType === 'printing' && t.status === 'pending'
-        ).length,
-        printingInProgress: tasks.documents.filter((t: any) => 
-          t.taskType === 'printing' && t.status === 'in-progress'
-        ).length,
-        printingCompleted: tasks.documents.filter((t: any) => 
-          t.taskType === 'printing' && (t.status === 'completed' || 
-          (t.workflowStage === 'printing' && t.status === 'completed'))
-        ).length,
-        deliveryPending: tasks.documents.filter((t: any) => 
-          t.taskType === 'delivery' && t.status === 'pending'
-        ).length,
-        deliveryInProgress: tasks.documents.filter((t: any) => 
-          t.taskType === 'delivery' && t.status === 'in-progress'
-        ).length,
-        deliveryCompleted: tasks.documents.filter((t: any) => 
-          t.taskType === 'delivery' && t.status === 'completed'
-        ).length
+        designingPending: tasksData.filter((t: any) => t.taskType === 'designing' && t.status === 'pending').length,
+        designingInProgress: tasksData.filter((t: any) => t.taskType === 'designing' && t.status === 'in-progress').length,
+        designingCompleted: tasksData.filter((t: any) => t.taskType === 'designing' && (t.status === 'completed' || (t.workflowStage === 'designing' && t.status === 'completed'))).length,
+        printingPending: tasksData.filter((t: any) => t.taskType === 'printing' && t.status === 'pending').length,
+        printingInProgress: tasksData.filter((t: any) => t.taskType === 'printing' && t.status === 'in-progress').length,
+        printingCompleted: tasksData.filter((t: any) => t.taskType === 'printing' && (t.status === 'completed' || (t.workflowStage === 'printing' && t.status === 'completed'))).length,
+        deliveryPending: tasksData.filter((t: any) => t.taskType === 'delivery' && t.status === 'pending').length,
+        deliveryInProgress: tasksData.filter((t: any) => t.taskType === 'delivery' && t.status === 'in-progress').length,
+        deliveryCompleted: tasksData.filter((t: any) => t.taskType === 'delivery' && t.status === 'completed').length
       };
-      
-      // Generate recent activities
+
       const recentActivities = [
         {
           id: '1',
           type: 'employee',
-          message: `${employees.documents.length} employees in system`,
+          message: `${employeesData.length} employees in system`,
           time: '2 hours ago'
         },
         {
           id: '2',
           type: 'task',
-          message: `${tasks.documents.filter((t: any) => t.status === 'completed').length} tasks completed today`,
+          message: `${tasksData.filter((t: any) => t.status === 'completed').length} tasks completed today`,
           time: '4 hours ago'
         },
         {
           id: '3',
           type: 'report',
-          message: `${reports.documents.length} daily reports submitted`,
+          message: `${reportsData.length} daily reports submitted`,
           time: '6 hours ago'
         }
       ];
 
       setStats({
-        totalEmployees: employees.documents.length,
-        totalStores: stores.documents.length,
-        totalCustomers: customers.documents.length,
-        pendingTasks: tasks.documents.filter((t: any) => t.status === 'pending').length,
-        completedTasks: tasks.documents.filter((t: any) => t.status === 'completed').length,
+        totalEmployees: employeesData.length,
+        totalStores: storesData.length,
+        totalCustomers: customersData.length,
+        pendingTasks: tasksData.filter((t: any) => t.status === 'pending').length,
+        completedTasks: tasksData.filter((t: any) => t.status === 'completed').length,
         monthlyRevenue: totalSales - totalExpenses,
         totalSales,
         totalExpenses,
         recentActivities
       });
-      
+
       setTaskStats(calculatedTaskStats);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
@@ -394,16 +374,13 @@ const EmployeeDashboard = () => {
   const loadMyTasks = async () => {
     try {
       setLoading(true);
-      const response = await taskService.getByAssignee(user?.$id || '');
-      // Filter tasks to only show tasks assigned to current user and not completed delivery tasks
-      const filteredTasks = response.documents.filter((task: any) => {
-        // Always show tasks assigned to current user
-        if (task.assigneeId === user?.$id) {
-          return true;
-        }
-        return false;
-      });
-      setMyTasks(filteredTasks);
+      const response = await taskService.getByAssignee(user?.id || '');
+      const myTasks = (response.data || []).map((task: any) => ({
+        ...task,
+        $id: task.id,
+        $createdAt: task.created_at,
+      }));
+      setMyTasks(myTasks);
     } catch (error) {
       console.error('Failed to load tasks:', error);
       toast({
@@ -722,23 +699,17 @@ const ManagerDashboard = () => {
   const loadManagerData = async () => {
     try {
       setLoading(true);
-      
-      // Load manager-specific data
       const [employees, tasks] = await Promise.all([
-        employeeService.list(),
-        taskService.list()
+        employeeService.list(1000),
+        taskService.list(undefined, 1000)
       ]);
-
-      // Filter data relevant to manager
-      const teamEmployees = employees.documents.filter((emp: any) => 
-        emp.role !== 'Admin' && emp.role !== 'Manager'
-      );
-      
-      const teamTasks = tasks.documents.filter((task: any) => {
+      const employeesData = (employees.data || []);
+      const tasksData = (tasks.data || []);
+      const teamEmployees = employeesData.filter((emp: any) => emp.role !== 'Admin' && emp.role !== 'Manager');
+      const teamTasks = tasksData.filter((task: any) => {
         const assignee = teamEmployees.find((emp: any) => emp.authUserId === task.assigneeId);
         return assignee;
       });
-
       setStats({
         teamSize: teamEmployees.length,
         totalTasks: teamTasks.length,
