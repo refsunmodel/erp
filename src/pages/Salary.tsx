@@ -40,33 +40,26 @@ export const Salary: React.FC = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (user) {
-      loadSalaryData();
+    // Only load salary data if user and user.employeeData exist
+    if (user && user.employeeData) {
+      loadSalaryData(user.employeeData);
+    } else {
+      setLoading(false);
     }
   }, [user]);
 
-  const loadSalaryData = async () => {
+  const loadSalaryData = async (employee: any) => {
     try {
       setLoading(true);
-      
-      // Get employee data first
-      const employeesResponse = await employeeService.list();
-      // Fix: Use authUserId for lookup (works for Manager too)
-      const currentEmployee = employeesResponse.documents.find((emp: any) => emp.authUserId === user?.$id);
 
-      if (currentEmployee) {
-        setEmployeeData(currentEmployee as unknown as Employee);
-        
-        // Get salary records for this employee
-        const salaryResponse = await salaryService.getByEmployee(currentEmployee.$id);
-        setSalaryHistory(salaryResponse.documents as unknown as SalaryInfo[]);
-      } else {
-        toast({
-          title: "Employee Not Found",
-          description: "Your employee record was not found in the system.",
-          variant: "destructive"
-        });
-      }
+      // Use employeeData from AuthContext for the current user
+      setEmployeeData(employee);
+
+      // Use the correct employee id for salary lookup (should be employee.$id)
+      const salaryResponse = await salaryService.getByEmployee(employee.$id);
+      // Accept both .data and .documents for compatibility
+      const salaryArr = salaryResponse.data || salaryResponse.documents || [];
+      setSalaryHistory(salaryArr as SalaryInfo[]);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -90,10 +83,15 @@ export const Salary: React.FC = () => {
   };
 
   const formatMonth = (monthString: string) => {
+    if (!monthString || typeof monthString !== 'string' || !monthString.includes('-')) return '-';
     const [year, month] = monthString.split('-');
-    const date = new Date(parseInt(year), parseInt(month) - 1);
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+    if (!year || !month) return '-';
+    const date = new Date(Number(year), Number(month) - 1);
+    return isNaN(date.getTime()) ? '-' : date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
   };
+
+  // Fix: Use fallback for missing $id and avoid .slice on undefined
+  const getRowKey = (salary: any, idx: number) => salary?.$id || salary?.id || `salary-row-${idx}`;
 
   if (loading) {
     return (
@@ -256,43 +254,46 @@ export const Salary: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {salaryHistory.map((salary) => (
-                  <TableRow key={salary.$id}>
+                {salaryHistory.map((salary, idx) => (
+                  <TableRow key={getRowKey(salary, idx)}>
                     <TableCell className="font-medium">
-                      {formatMonth(salary.month)}
+                      {salary?.month ? formatMonth(salary.month) : '-'}
                     </TableCell>
                     {user?.role === 'Admin' && (
                       <>
-                        <TableCell>{formatSalaryAmount(salary.base_salary)}</TableCell>
+                        <TableCell>{formatSalaryAmount(salary?.base_salary ?? salary?.baseSalary ?? 0)}</TableCell>
                         <TableCell className="text-green-600">
-                          +{formatSalaryAmount(salary.overtime)}
+                          +{formatSalaryAmount(salary?.overtime ?? 0)}
                         </TableCell>
                         <TableCell className="text-purple-600">
-                          +{formatSalaryAmount(salary.bonus)}
+                          +{formatSalaryAmount(salary?.bonus ?? 0)}
                         </TableCell>
                         <TableCell className="text-red-600">
-                          -{formatSalaryAmount(salary.deductions)}
+                          -{formatSalaryAmount(salary?.deductions ?? 0)}
                         </TableCell>
                         <TableCell className="text-orange-600">
-                          -{formatSalaryAmount(salary.advanceSalary || 0)}
+                          -{formatSalaryAmount(salary?.advanceSalary ?? salary?.advance_salary ?? 0)}
                         </TableCell>
                         <TableCell className="font-bold">
-                          {formatSalaryAmount(salary.netSalary)}
+                          {formatSalaryAmount(salary?.netSalary ?? salary?.net_salary ?? 0)}
                         </TableCell>
                       </>
                     )}
                     <TableCell>
-                      <Badge className={getStatusColor(salary.status)}>
-                        {salary.status}
+                      <Badge className={getStatusColor(salary?.status)}>
+                        {salary?.status}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {salary.payDate ? new Date(salary.payDate).toLocaleDateString() : '-'}
+                      {salary?.payDate
+                        ? new Date(salary.payDate).toLocaleDateString()
+                        : salary?.pay_date
+                        ? new Date(salary.pay_date).toLocaleDateString()
+                        : '-'}
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
-         
             </div>
           )}
         </CardContent>
@@ -311,10 +312,10 @@ export const Salary: React.FC = () => {
                 <p className="text-sm font-medium text-gray-600">Employee Name</p>
                 <p className="text-lg">{employeeData.name}</p>
               </div>
-              <div>
+              {/* <div>
                 <p className="text-sm font-medium text-gray-600">Employee ID</p>
-                <p className="text-lg font-mono">{employeeData.$id.slice(-8).toUpperCase()}</p>
-              </div>
+                <p className="text-lg font-mono">{employeeData.employee_id.slice(-8).toUpperCase()}</p>
+              </div> */}
               <div>
                 <p className="text-sm font-medium text-gray-600">Role</p>
                 <p className="text-lg">{employeeData.role}</p>

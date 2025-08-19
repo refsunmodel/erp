@@ -30,11 +30,12 @@ export const employeeService = {
     return await supabase.from(TABLES.EMPLOYEES).insert([data]);
   },
 
+  // Only fetch needed columns, cache in state in UI
   list: async (limit = 100) => {
     return await withRetry(async () => {
       const { data, error } = await supabase
         .from(TABLES.EMPLOYEES)
-        .select('id,name,role,store_id,email,auth_user_id,status,annual_salary,bank_details,mode_of_payment,salary_date,created_at,advance_payment,password,last_payment_date')
+        .select('id,name,role,store_id,email,auth_user_id,status,annual_salary,mode_of_payment,salary_date,created_at,advance_payment,password,last_payment_date')
         .limit(limit);
 
       if (error) {
@@ -51,7 +52,6 @@ export const employeeService = {
         status: emp.status,
         authUserId: emp.auth_user_id,
         annualSalary: emp.annual_salary,
-        bankDetails: emp.bank_details,
         modeOfPayment: emp.mode_of_payment,
         salaryDate: emp.salary_date,
         $createdAt: emp.created_at,
@@ -74,7 +74,7 @@ export const employeeService = {
   async getByStore(storeId: string, limit = 100) {
     const { data, error } = await supabase
       .from(TABLES.EMPLOYEES)
-      .select('id,name,role,email,auth_user_id,status,annual_salary,bank_details,mode_of_payment,salary_date,created_at,advance_payment')
+      .select('id,name,role,email,auth_user_id,status,annual_salary,mode_of_payment,salary_date,created_at,advance_payment')
       .eq('store_id', storeId)
       .limit(limit);
 
@@ -87,7 +87,6 @@ export const employeeService = {
       status: emp.status,
       authUserId: emp.auth_user_id,
       annualSalary: emp.annual_salary,
-      bankDetails: emp.bank_details,
       modeOfPayment: emp.mode_of_payment,
       salaryDate: emp.salary_date,
       $createdAt: emp.created_at,
@@ -155,21 +154,42 @@ export const taskService = {
     return await supabase.from(TABLES.TASKS).insert([data]);
   },
 
-  // Only filter by assignee_id if userId is a valid UUID (auth_user_id)
-  list: async (userAuthUserId?: string, limit = 50, page = 1) => {
+  // Use pagination, column selection, and push filtering to Supabase
+  list: async (
+    { 
+      userAuthUserId, 
+      limit = 20, 
+      page = 0, 
+      search, 
+      status, 
+      taskType 
+    }: { 
+      userAuthUserId?: string, 
+      limit?: number, 
+      page?: number, 
+      search?: string, 
+      status?: string, 
+      taskType?: string 
+    } = {}
+  ) => {
     return await withRetry(async () => {
-      const start = (page - 1) * limit;
-      const end = start + limit - 1;
-
       let query = supabase
         .from(TABLES.TASKS)
         .select('id,order_no,title,description,task_type,assignee_id,assignee_name,due_date,due_time,status,priority,created_by,file_url,customer_phone,printing_type,workflow_stage,original_order_id,parent_task_id,last_updated,created_at')
-        .order('last_updated', { ascending: false })
-        .range(start, end);
+        .order('created_at', { ascending: false })
+        .range(page * limit, (page + 1) * limit - 1);
 
-      // Only filter if userAuthUserId is a valid UUID
-      if (userAuthUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userAuthUserId)) {
+      if (userAuthUserId && /^[0-9a-f\-]{36}$/.test(userAuthUserId)) {
         query = query.eq('assignee_id', userAuthUserId);
+      }
+      if (status) {
+        query = query.eq('status', status);
+      }
+      if (taskType) {
+        query = query.eq('task_type', taskType);
+      }
+      if (search) {
+        query = query.ilike('description', `%${search}%`);
       }
 
       const { data, error } = await query;
@@ -204,6 +224,7 @@ export const taskService = {
     });
   },
 
+  // Batch update: status + assignee in one call
   async update(id: string, data: any) {
     return await supabase.from(TABLES.TASKS).update(data).eq('id', id);
   },
@@ -212,14 +233,15 @@ export const taskService = {
     return await supabase.from(TABLES.TASKS).delete().eq('id', id);
   },
 
-  async getByAssignee(assigneeAuthUserId: string) {
-    // Only filter if assigneeAuthUserId is a valid UUID
+  // Use pagination and column selection for assignee queries
+  async getByAssignee(assigneeAuthUserId: string, limit = 20, page = 0) {
     let query = supabase
       .from(TABLES.TASKS)
       .select('id,order_no,title,description,task_type,assignee_id,assignee_name,due_date,due_time,status,priority,created_by,file_url,customer_phone,printing_type,workflow_stage,original_order_id,parent_task_id,last_updated,created_at')
-      .order('last_updated', { ascending: false });
+      .order('created_at', { ascending: false })
+      .range(page * limit, (page + 1) * limit - 1);
 
-    if (assigneeAuthUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(assigneeAuthUserId)) {
+    if (assigneeAuthUserId && /^[0-9a-f\-]{36}$/.test(assigneeAuthUserId)) {
       query = query.eq('assignee_id', assigneeAuthUserId);
     }
 
@@ -315,9 +337,16 @@ export const salaryService = {
     return await supabase.from(TABLES.SALARY_RECORDS).insert([data]);
   },
 
-  async list(employeeId?: string) {
-    let query = supabase.from(TABLES.SALARY_RECORDS).select('id,net_salary,created_at,employee_id,month,base_salary,overtime,bonus,deductions,advance_salary,status,pay_date');
-    if (employeeId) query = query.eq('employee_id', employeeId);
+  // Only add .eq('employee_id', ...) if employeeId is defined and truthy
+  async list(employeeId?: string, limit = 20, page = 0) {
+    let query = supabase
+      .from(TABLES.SALARY_RECORDS)
+      .select('id,net_salary,created_at,employee_id,month,base_salary,overtime,bonus,deductions,advance_salary,status,pay_date')
+      .order('created_at', { ascending: false })
+      .range(page * limit, (page + 1) * limit - 1);
+    if (employeeId && employeeId !== 'undefined') {
+      query = query.eq('employee_id', employeeId);
+    }
     return await query;
   },
 
@@ -325,12 +354,16 @@ export const salaryService = {
     return await supabase.from(TABLES.SALARY_RECORDS).update(data).eq('id', id);
   },
 
-  async getByEmployee(employeeId: string) {
-    return await supabase
+  async getByEmployee(employeeId: string, limit = 20, page = 0) {
+    let query = supabase
       .from(TABLES.SALARY_RECORDS)
       .select('id,net_salary,created_at,employee_id,month,base_salary,overtime,bonus,deductions,advance_salary,status,pay_date')
-      .eq('employee_id', employeeId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .range(page * limit, (page + 1) * limit - 1);
+    if (employeeId && employeeId !== 'undefined') {
+      query = query.eq('employee_id', employeeId);
+    }
+    return await query;
   },
 
   async getEmployeeAttendance(employeeId: string, month: string) {
@@ -407,12 +440,15 @@ export const attendanceService = {
     return await supabase.from(TABLES.ATTENDANCE).insert([data]);
   },
 
-  async list(employeeId?: string, date?: string, month?: string) {
-    let query = supabase.from(TABLES.ATTENDANCE).select('id,date,status,employee_id');
+  async list(employeeId?: string, date?: string, month?: string, limit = 100, page = 0) {
+    let query = supabase
+      .from(TABLES.ATTENDANCE)
+      .select('id,date,status,employee_id')
+      .order('date', { ascending: false })
+      .range(page * limit, (page + 1) * limit - 1);
     if (employeeId) query = query.eq('employee_id', employeeId);
     if (date) query = query.eq('date', date);
     if (month) query = query.gte('date', `${month}-01`).lte('date', `${month}-31`);
-    query = query.order('date', { ascending: false });
     return await query;
   },
 
