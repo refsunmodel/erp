@@ -76,7 +76,6 @@ export const Employees: React.FC = () => {
         salaryService.list()
       ]);
       
-      // Use .data instead of .documents and add fallback for empty/null
       const employeesArr = employeesResponse.data || [];
       const storesArr = storesResponse.data || [];
       const salaryArr = salaryResponse.data || [];
@@ -85,14 +84,25 @@ export const Employees: React.FC = () => {
       const employeesWithDetails = employeesArr.map((emp: any) => {
         const store = storesArr.find((s: any) => s.id === emp.store_id || s.$id === emp.store_id);
         const lastSalary = salaryArr
-          .filter((s: any) => s.employee_id === emp.$id || s.employee_id === emp.$id)
-          .sort((a: any, b: any) => new Date((b.$createdAt || b.created_at)).getTime() - new Date((a.$createdAt || a.created_at)).getTime())[0];
-        
+          .filter((s: any) => s.employee_id === emp.$id || s.employee_id === emp.authUserId || s.employee_id === emp.auth_user_id)
+          .sort((a: any, b: any) => new Date((b.pay_date || b.created_at)).getTime() - new Date((a.pay_date || a.created_at)).getTime())[0];
+
+        // Fix: salary_date can be under emp.salary_date, emp.salaryDate, or as a number
+        let salary_date = '';
+        if (typeof emp.salary_date !== 'undefined' && emp.salary_date !== null && emp.salary_date !== '') {
+          salary_date = emp.salary_date.toString();
+        } else if (typeof emp.salaryDate !== 'undefined' && emp.salaryDate !== null && emp.salaryDate !== '') {
+          salary_date = emp.salaryDate.toString();
+        } else {
+          salary_date = '';
+        }
+
         return {
           ...emp,
           store_name: store?.name || null,
           last_payment_date: lastSalary?.pay_date || lastSalary?.created_at || null,
-          advance_payment: emp.advance_payment || 0 // Add advance payment to employee object
+          advance_payment: emp.advance_payment || 0,
+          salary_date // always string, never null/undefined
         };
       });
       
@@ -212,9 +222,12 @@ export const Employees: React.FC = () => {
       email: employee.email,
       password: '',
       role: employee.role,
-      annual_salary: (employee.annual_salary ?? '').toString(), // <-- snake_case
+      annual_salary: (employee.annual_salary ?? '').toString(),
       mode_of_payment: employee.mode_of_payment || '',
-      salary_date: employee.salary_date || '',
+      // Fix: always use string for salary_date, fallback to ''
+      salary_date: (employee.salary_date !== undefined && employee.salary_date !== null && employee.salary_date !== '')
+        ? employee.salary_date.toString()
+        : '',
       store_id: employee.store_id || '',
       advance_payment: employee.advance_payment?.toString() || ''
     });
