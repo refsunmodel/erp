@@ -51,10 +51,10 @@ export const DailyReports: React.FC = () => {
     
     try {
       setLoading(true);
-      const response = user.role === 'Admin' 
-        ? await dailyReportService.list()
-        : await dailyReportService.list(user.$id, user.storeId);
-      setReports(response.documents as unknown as DailyReport[]);
+      const response = user?.role === 'Admin'
+        ? await dailyReportService.list(undefined, undefined)
+        : await dailyReportService.list(user.id, user.storeId);
+      setReports((response.data || []) as unknown as DailyReport[]);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -79,8 +79,8 @@ export const DailyReports: React.FC = () => {
         expenses: Number(formData.expenses),
         customerCount: Number(formData.customerCount),
         notes: formData.notes,
-        userId: user.$id,
-        userName: user.name || user.email,
+        userId: user.id,
+        userName: user.employeeData?.name || user.email,
         storeId: user.storeId || null,
         storeName: user.storeId ? 'Store Name' : null // In real app, fetch from stores
       };

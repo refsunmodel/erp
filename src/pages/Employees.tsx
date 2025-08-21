@@ -18,18 +18,18 @@ interface Employee {
   name: string;
   email: string;
   role: 'Admin' | 'Manager' | 'Graphic Designer' | 'Printing Technician' | 'Delivery Supervisor';
-  annualSalary: number;
-  bankDetails: string;
-  storeId?: string;
-  storeName?: string;
+  annual_salary: number; // <-- use snake_case everywhere
+  bank_details: string;
+  store_id?: string;
+  store_name?: string;
   status: 'Active' | 'Inactive';
-  authUserId?: string;
-  modeOfPayment?: string;
-  salaryDate?: string;
-  lastPaymentDate?: string;
+  auth_user_id?: string;
+  mode_of_payment?: string;
+  salary_date?: string;
+  last_payment_date?: string;
   password?: string;
   $createdAt: string;
-  advancePayment?: number; // Add advance payment field
+  advance_payment?: number;
 }
 
 interface Store {
@@ -55,11 +55,11 @@ export const Employees: React.FC = () => {
     email: '',
     password: '',
     role: 'Graphic Designer' as Employee['role'],
-    annualSalary: '',
-    modeOfPayment: '',
-    salaryDate: '',
-    storeId: '',
-    advancePayment: '' // Add advance payment field
+    annual_salary: '', // <-- snake_case
+    mode_of_payment: '',
+    salary_date: '',
+    store_id: '',
+    advance_payment: ''
   });
 
   useEffect(() => {
@@ -83,16 +83,16 @@ export const Employees: React.FC = () => {
       
       // Map store names and last payment dates to employees
       const employeesWithDetails = employeesArr.map((emp: any) => {
-        const store = storesArr.find((s: any) => s.id === emp.storeId || s.$id === emp.storeId);
+        const store = storesArr.find((s: any) => s.id === emp.store_id || s.$id === emp.store_id);
         const lastSalary = salaryArr
           .filter((s: any) => s.employee_id === emp.$id || s.employee_id === emp.$id)
           .sort((a: any, b: any) => new Date((b.$createdAt || b.created_at)).getTime() - new Date((a.$createdAt || a.created_at)).getTime())[0];
         
         return {
           ...emp,
-          storeName: store?.name || null,
-          lastPaymentDate: lastSalary?.payDate || lastSalary?.created_at || null,
-          advancePayment: emp.advancePayment || 0 // Add advance payment to employee object
+          store_name: store?.name || null,
+          last_payment_date: lastSalary?.pay_date || lastSalary?.created_at || null,
+          advance_payment: emp.advance_payment || 0 // Add advance payment to employee object
         };
       });
       
@@ -128,13 +128,16 @@ export const Employees: React.FC = () => {
     setSubmitting(true);
     
     try {
-      let authUserId = editingEmployee?.authUserId;
+      let auth_user_id = editingEmployee?.auth_user_id;
       
       // Create user account if adding new employee
       if (!editingEmployee && formData.email && formData.password) {
         try {
           const userAccount = await createUserAccount(formData.email, formData.password, formData.name);
-          authUserId = userAccount.$id;
+          if (!userAccount) {
+            throw new Error('User account creation failed');
+          }
+          auth_user_id = userAccount.id;
         } catch (error: any) {
           toast({
             title: "Error",
@@ -149,14 +152,14 @@ export const Employees: React.FC = () => {
         name: formData.name,
         email: formData.email,
         role: formData.role,
-        annualSalary: Number(formData.annualSalary),
-        modeOfPayment: formData.modeOfPayment,
-        salaryDate: formData.salaryDate,
-        storeId: formData.storeId || null,
+        annual_salary: Number(formData.annual_salary), // <-- snake_case
+        mode_of_payment: formData.mode_of_payment,
+        salary_date: formData.salary_date,
+        store_id: formData.store_id || null,
         password: formData.password,
         status: 'Active',
-        authUserId,
-        advancePayment: Number(formData.advancePayment) || 0 // Save advance payment
+        auth_user_id,
+        advance_payment: Number(formData.advance_payment) || 0
       };
 
       if (editingEmployee) {
@@ -192,11 +195,11 @@ export const Employees: React.FC = () => {
       email: '',
       password: '',
       role: 'Graphic Designer',
-      annualSalary: '',
-      modeOfPayment: '',
-      salaryDate: '',
-      storeId: '',
-      advancePayment: ''
+      annual_salary: '', // <-- snake_case
+      mode_of_payment: '',
+      salary_date: '',
+      store_id: '',
+      advance_payment: ''
     });
     setEditingEmployee(null);
     setIsAddDialogOpen(false);
@@ -209,11 +212,11 @@ export const Employees: React.FC = () => {
       email: employee.email,
       password: '',
       role: employee.role,
-      annualSalary: employee.annualSalary.toString(),
-      modeOfPayment: employee.modeOfPayment || '',
-      salaryDate: employee.salaryDate || '',
-      storeId: employee.storeId || '',
-      advancePayment: employee.advancePayment?.toString() || ''
+      annual_salary: (employee.annual_salary ?? '').toString(), // <-- snake_case
+      mode_of_payment: employee.mode_of_payment || '',
+      salary_date: employee.salary_date || '',
+      store_id: employee.store_id || '',
+      advance_payment: employee.advance_payment?.toString() || ''
     });
     setIsAddDialogOpen(true);
   };
@@ -244,16 +247,15 @@ export const Employees: React.FC = () => {
 
   const paySalary = async (employee: Employee) => {
     try {
-      const monthlySalary = Math.round(employee.annualSalary / 12);
-      
+      const monthlySalary = Math.round((employee.annual_salary ?? 0) / 12); // <-- snake_case
       await salaryService.create({
         employee_id: employee.$id,
         employeeName: employee.name,
-        month: new Date().toISOString().slice(0, 7), // YYYY-MM format
+        month: new Date().toISOString().slice(0, 7),
         base_salary: monthlySalary,
         overtime: 0,
         bonus: 0,
-        deductions: Math.round(monthlySalary * 0.1), // 10% deductions
+        deductions: Math.round(monthlySalary * 0.1),
         net_salary: Math.round(monthlySalary * 0.9),
         status: 'Paid',
         pay_date: new Date().toISOString().split('T')[0]
@@ -363,21 +365,21 @@ export const Employees: React.FC = () => {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="annualSalary">Annual Salary ($)</Label>
+                    <Label htmlFor="annual_salary">Annual Salary ($)</Label>
                     <Input
-                      id="annualSalary"
+                      id="annual_salary"
                       type="number"
-                      value={formData.annualSalary}
-                      onChange={(e) => setFormData(prev => ({ ...prev, annualSalary: e.target.value }))}
+                      value={formData.annual_salary}
+                      onChange={(e) => setFormData(prev => ({ ...prev, annual_salary: e.target.value }))}
                       required
                     />
                   </div>
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="storeId">Assign to Store (Optional)</Label>
-                  <Select value={formData.storeId} onValueChange={(value) => 
-                    setFormData(prev => ({ ...prev, storeId: value }))
+                  <Label htmlFor="store_id">Assign to Store (Optional)</Label>
+                  <Select value={formData.store_id} onValueChange={(value) => 
+                    setFormData(prev => ({ ...prev, store_id: value }))
                   }>
                     <SelectTrigger>
                       <SelectValue placeholder="Select a store" />
@@ -394,9 +396,9 @@ export const Employees: React.FC = () => {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="modeOfPayment">Mode of Payment</Label>
-                  <Select value={formData.modeOfPayment} onValueChange={(value) => 
-                    setFormData(prev => ({ ...prev, modeOfPayment: value }))
+                  <Label htmlFor="mode_of_payment">Mode of Payment</Label>
+                  <Select value={formData.mode_of_payment} onValueChange={(value) => 
+                    setFormData(prev => ({ ...prev, mode_of_payment: value }))
                   }>
                     <SelectTrigger>
                       <SelectValue placeholder="Select payment mode" />
@@ -412,25 +414,25 @@ export const Employees: React.FC = () => {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="salaryDate">Salary Date (Day of Month)</Label>
+                  <Label htmlFor="salary_date">Salary Date (Day of Month)</Label>
                   <Input
-                    id="salaryDate"
+                    id="salary_date"
                     type="number"
                     min="1"
                     max="31"
-                    value={formData.salaryDate}
-                    onChange={(e) => setFormData(prev => ({ ...prev, salaryDate: e.target.value }))}
+                    value={formData.salary_date}
+                    onChange={(e) => setFormData(prev => ({ ...prev, salary_date: e.target.value }))}
                     placeholder="e.g., 15 for 15th of every month"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="advancePayment">Advance Payment ($)</Label>
+                  <Label htmlFor="advance_payment">Advance Payment ($)</Label>
                   <Input
-                    id="advancePayment"
+                    id="advance_payment"
                     type="number"
-                    value={formData.advancePayment}
-                    onChange={(e) => setFormData(prev => ({ ...prev, advancePayment: e.target.value }))}
+                    value={formData.advance_payment}
+                    onChange={(e) => setFormData(prev => ({ ...prev, advance_payment: e.target.value }))}
                     placeholder="Enter advance payment amount"
                   />
                 </div>
@@ -494,7 +496,9 @@ export const Employees: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Payroll</p>
                 <p className="text-2xl font-bold text-purple-600">
-                  ₹{employees.reduce((sum, e) => sum + e.annualSalary, 0).toLocaleString()}
+                  ₹{employees.reduce((sum, e) =>
+                      sum + (typeof e.annual_salary === 'number' && e.annual_salary ? e.annual_salary : 0), 0
+                    )}
                 </p>
               </div>
               <div className="p-3 rounded-full bg-purple-100">
@@ -510,7 +514,7 @@ export const Employees: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Stores Covered</p>
                 <p className="text-2xl font-bold text-orange-600">
-                  {new Set(employees.filter(e => e.storeId).map(e => e.storeId)).size}
+                  {new Set(employees.filter(e => e.store_id).map(e => e.store_id)).size}
                 </p>
               </div>
               <div className="p-3 rounded-full bg-orange-100">
@@ -569,10 +573,10 @@ export const Employees: React.FC = () => {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {employee.storeName ? (
+                    {employee.store_name ? (
                       <div className="flex items-center">
                         <Building className="h-4 w-4 mr-2 text-gray-400" />
-                        {employee.storeName}
+                        {employee.store_name}
                       </div>
                     ) : (
                       <span className="text-gray-400">No assignment</span>
@@ -581,15 +585,19 @@ export const Employees: React.FC = () => {
                   <TableCell>
                     <div className="flex items-center">
                       <DollarSign className="h-3 w-3 mr-1" />
-                      <span>{employee.annualSalary.toLocaleString()}</span>
+                      <span>
+                        {employee.annual_salary === null || employee.annual_salary === undefined
+                          ? <span className="text-gray-400">N/A</span>
+                          : employee.annual_salary}
+                      </span>
                     </div>
                   </TableCell>
                   <TableCell>
-                    {employee.lastPaymentDate ? (
+                    {employee.last_payment_date ? (
                       <div className="flex items-center">
                         <Calendar className="h-3 w-3 mr-2 text-gray-400" />
                         <span className="text-sm">
-                          {new Date(employee.lastPaymentDate).toLocaleDateString()}
+                          {new Date(employee.last_payment_date).toLocaleDateString()}
                         </span>
                       </div>
                     ) : (
@@ -611,7 +619,7 @@ export const Employees: React.FC = () => {
                     </Button>
                   </TableCell>
                   <TableCell>
-                    <span>${employee.advancePayment?.toLocaleString() || '0'}</span>
+                    <span>${employee.advance_payment?.toLocaleString() || '0'}</span>
                   </TableCell>
                   <TableCell>
                     <div className="flex space-x-2">

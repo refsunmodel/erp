@@ -25,11 +25,12 @@ export const TABLES = {
 
 // Helper function to create user accounts (sign up)
 export const createUserAccount = async (email: string, password: string, name: string) => {
-  const { user, error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: { data: { name } }
   });
+  const user = data.user;
   if (error) throw error;
   return user;
 };

@@ -53,7 +53,7 @@ export const Stores: React.FC = () => {
     try {
       setLoading(true);
       const response = await storeService.list();
-      setStores(response.documents as unknown as StoreData[]);
+      setStores((response.data || []) as unknown as StoreData[]);
     } catch (error: any) {
       toast({
         title: "Error",

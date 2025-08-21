@@ -80,7 +80,7 @@ const AdminDashboard = () => {
         employeeService.list(1000),
         storeService.list(1000),
         customerService.list(1000),
-        taskService.list(undefined, 1000),
+        taskService.list({ limit: 1000 }),
         dailyReportService.list(undefined, undefined, undefined, undefined, 1000)
       ]);
       const employeesData = (employees.data || []);
@@ -457,7 +457,7 @@ const EmployeeDashboard = () => {
     <div className="container mx-auto px-2 sm:px-4 py-4 space-y-6">
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">My Dashboard</h1>
-        <p className="text-gray-600 mt-2 text-sm sm:text-base">Welcome back, {user?.name || user?.email}! Here's your task overview.</p>
+        <p className="text-gray-600 mt-2 text-sm sm:text-base">Welcome back, {user?.employeeData?.name || user?.email}! Here's your task overview.</p>
       </div>
 
       {/* Task Statistics */}
@@ -701,7 +701,7 @@ const ManagerDashboard = () => {
       setLoading(true);
       const [employees, tasks] = await Promise.all([
         employeeService.list(1000),
-        taskService.list(undefined, 1000)
+        taskService.list({ limit: 1000 })
       ]);
       const employeesData = (employees.data || []);
       const tasksData = (tasks.data || []);

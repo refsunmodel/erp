@@ -17,7 +17,7 @@ interface Employee {
   name: string;
   email: string;
   role: 'Admin' | 'Employee' | 'Store Manager';
-  annualSalary: number;
+  annual_salary: number;
   bankDetails: string;
   storeId?: string;
   status: 'Active' | 'Inactive';
@@ -53,7 +53,7 @@ export const StoreEmployees: React.FC = () => {
       setLoading(true);
       const response = await employeeService.list();
       // Filter employees by store manager's store
-      const storeEmployees = response.documents.filter((emp: any) => 
+      const storeEmployees = (response.data || []).filter((emp: any) => 
         emp.storeId === user?.storeId || emp.role === 'Employee'
       );
       setEmployees(storeEmployees as unknown as Employee[]);
@@ -76,7 +76,7 @@ export const StoreEmployees: React.FC = () => {
   const handlePaySalary = (employee: Employee) => {
     setSelectedEmployee(employee);
     setPaymentData({
-      monthlySalary: (employee.annualSalary / 12).toFixed(0),
+      monthlySalary: (employee.annual_salary / 12).toFixed(0),
       bonus: '0',
       deductions: '0',
       paymentDate: new Date().toISOString().split('T')[0]
@@ -195,7 +195,7 @@ export const StoreEmployees: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Monthly Payroll</p>
                 <p className="text-2xl font-bold text-purple-600">
-                  ${employees.reduce((sum, e) => sum + (e.annualSalary / 12), 0).toLocaleString()}
+                  ${employees.reduce((sum, e) => sum + (e.annual_salary / 12), 0).toLocaleString()}
                 </p>
               </div>
               <div className="p-3 rounded-full bg-purple-100">
@@ -267,7 +267,7 @@ export const StoreEmployees: React.FC = () => {
                   <TableCell>
                     <div className="flex items-center">
                       <DollarSign className="h-3 w-3 mr-1" />
-                      <span>${getMonthlySalary(employee.annualSalary)}</span>
+                      <span>${getMonthlySalary(employee.annual_salary)}</span>
                     </div>
                   </TableCell>
                   <TableCell>

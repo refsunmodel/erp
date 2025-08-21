@@ -85,17 +85,16 @@ export const Chat: React.FC = () => {
     try {
       setLoading(true);
       const response = await employeeService.list();
-      
-      // For admin, show all employees. For employees, show admin and other employees
-      let filteredEmployees = response.documents.filter((emp: any) => 
-        emp.authUserId && emp.authUserId !== user?.$id
+      // Use .data instead of .documents
+      let filteredEmployees = (response.data || []).filter((emp: any) =>
+        emp.authUserId && emp.authUserId !== user?.id
       );
 
       // If current user is not admin, add admin to the list
       if (user?.role !== 'Admin') {
-        const adminEmployee = response.documents.find((emp: any) => emp.role === 'Admin');
-        if (adminEmployee && adminEmployee.authUserId !== user?.$id) {
-          filteredEmployees = [adminEmployee, ...filteredEmployees.filter(emp => emp.role !== 'Admin')];
+        const adminEmployee = (response.data || []).find((emp: any) => emp.role === 'Admin');
+        if (adminEmployee && adminEmployee.authUserId !== user?.id) {
+          filteredEmployees = [adminEmployee, ...filteredEmployees.filter((emp: any) => emp.role !== 'Admin')];
         }
       }
 
@@ -113,14 +112,21 @@ export const Chat: React.FC = () => {
 
   const loadDirectMessages = async () => {
     if (!selectedEmployee || !user) return;
-    
     try {
-      const response = await chatService.getDirectMessages(user.$id, selectedEmployee.authUserId);
+      const response = await chatService.getDirectMessages(user.id, selectedEmployee.authUserId);
       // Filter messages between these two users specifically
-      const filteredMessages = response.documents.filter((msg: any) => 
-        (msg.senderId === user.$id && msg.receiverId === selectedEmployee.authUserId) ||
-        (msg.senderId === selectedEmployee.authUserId && msg.receiverId === user.$id)
-      );
+      const filteredMessages = (response.data || []).filter((msg: any) =>
+        (msg.sender_id === user.id && msg.receiver_id === selectedEmployee.authUserId) ||
+        (msg.sender_id === selectedEmployee.authUserId && msg.receiver_id === user.id)
+      ).map((msg: any) => ({
+        $id: msg.id,
+        senderId: msg.sender_id,
+        senderName: '', // Not available in schema, could be fetched if needed
+        receiverId: msg.receiver_id,
+        chatType: 'direct',
+        message: msg.message,
+        timestamp: msg.timestamp,
+      }));
       setDirectMessages(filteredMessages as unknown as ChatMessage[]);
     } catch (error: any) {
       console.error('Failed to load direct messages:', error);
@@ -130,7 +136,15 @@ export const Chat: React.FC = () => {
   const loadGroupMessages = async () => {
     try {
       const response = await chatService.getMessages('group');
-      setGroupMessages(response.documents.reverse() as unknown as ChatMessage[]);
+      const groupMsgs = (response.data || []).map((msg: any) => ({
+        $id: msg.id,
+        senderId: msg.sender_id,
+        senderName: '', // Not available in schema, could be fetched if needed
+        chatType: 'group',
+        message: msg.message,
+        timestamp: msg.timestamp,
+      }));
+      setGroupMessages(groupMsgs.reverse() as unknown as ChatMessage[]);
     } catch (error: any) {
       console.error('Failed to load group messages:', error);
     }
@@ -141,11 +155,11 @@ export const Chat: React.FC = () => {
     if (!newMessage.trim() || !user) return;
 
     setSending(true);
-    
+
     try {
       const messageData = {
-        senderId: user.$id,
-        senderName: user.name || user.email,
+        senderId: user.id,
+        senderName: user.employeeData?.name || user.email,
         message: newMessage.trim(),
         chatType: activeTab as 'direct' | 'group',
         ...(activeTab === 'direct' && selectedEmployee ? {
@@ -155,14 +169,14 @@ export const Chat: React.FC = () => {
 
       await chatService.sendMessage(messageData);
       setNewMessage('');
-      
+
       // Reload messages
       if (activeTab === 'direct' && selectedEmployee) {
         await loadDirectMessages();
       } else {
         await loadGroupMessages();
       }
-      
+
     } catch (error: any) {
       toast({
         title: "Error",
@@ -290,21 +304,21 @@ export const Chat: React.FC = () => {
                       {groupMessages.map((message) => (
                         <div
                           key={message.$id}
-                          className={`flex ${message.senderId === user?.$id ? 'justify-end' : 'justify-start'}`}
+                          className={`flex ${message.senderId === user?.id ? 'justify-end' : 'justify-start'}`}
                         >
                           <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                            message.senderId === user?.$id
+                            message.senderId === user?.id
                               ? 'bg-blue-600 text-white'
                               : 'bg-gray-100 text-gray-900'
                           }`}>
-                            {message.senderId !== user?.$id && (
+                            {message.senderId !== user?.id && (
                               <p className="text-xs font-medium mb-1 opacity-70">
                                 {message.senderName}
                               </p>
                             )}
                             <p className="text-sm">{message.message}</p>
                             <p className={`text-xs mt-1 ${
-                              message.senderId === user?.$id ? 'text-blue-100' : 'text-gray-500'
+                              message.senderId === user?.id ? 'text-blue-100' : 'text-gray-500'
                             }`}>
                               {formatTime(message.timestamp)}
                             </p>
@@ -362,16 +376,16 @@ export const Chat: React.FC = () => {
                           {directMessages.map((message) => (
                             <div
                               key={message.$id}
-                              className={`flex ${message.senderId === user?.$id ? 'justify-end' : 'justify-start'}`}
+                              className={`flex ${message.senderId === user?.id ? 'justify-end' : 'justify-start'}`}
                             >
                               <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                                message.senderId === user?.$id
+                                message.senderId === user?.id
                                   ? 'bg-blue-600 text-white'
                                   : 'bg-gray-100 text-gray-900'
                               }`}>
                                 <p className="text-sm">{message.message}</p>
                                 <p className={`text-xs mt-1 ${
-                                  message.senderId === user?.$id ? 'text-blue-100' : 'text-gray-500'
+                                  message.senderId === user?.id ? 'text-blue-100' : 'text-gray-500'
                                 }`}>
                                   {formatTime(message.timestamp)}
                                 </p>

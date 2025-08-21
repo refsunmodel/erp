@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLocation } from 'react-router-dom';
+import { employeeService, attendanceService, taskService, salaryService } from '@/lib/database';
+import { useToast } from '@/hooks/use-toast';
 import { Bell, Calendar, DollarSign, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,9 +14,6 @@ import {
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
-import { employeeService, attendanceService, taskService } from '@/lib/database';
-import { useToast } from '@/hooks/use-toast';
-import { useLocation } from 'react-router-dom';
 import { playNotificationSound, updateFavicon } from '@/utils/notificationSound';
 
 interface SalaryNotification {
@@ -56,9 +56,25 @@ export const NotificationCenter: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [previousNotificationCount, setPreviousNotificationCount] = useState(0);
   const [lastCheckTime, setLastCheckTime] = useState<string>(() => {
-    return localStorage.getItem(`lastNotificationCheck_${user?.$id}`) || new Date().toISOString();
+    // FIX: use user.id not user.$id
+    return localStorage.getItem(`lastNotificationCheck_${user?.id}`) || new Date().toISOString();
   });
   const { toast } = useToast();
+  const [employeeMap, setEmployeeMap] = useState<Record<string, any>>({});
+
+  // Fetch all employees for mapping UUID to name/email
+  useEffect(() => {
+    employeeService.list(1000).then(res => {
+      const arr = res.data || [];
+      // REMOVE: setEmployees(arr);
+      const map: Record<string, any> = {};
+      arr.forEach(emp => {
+        if (emp.authUserId) map[emp.authUserId] = emp;
+        if (emp.$id) map[emp.$id] = emp;
+      });
+      setEmployeeMap(map);
+    });
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -81,16 +97,15 @@ export const NotificationCenter: React.FC = () => {
     try {
       setLoading(true);
       const currentDate = new Date();
-      // Set document title
       document.title = "Arun offset Edgesync ERP by codetoli technology";
       const allNotifications: Notification[] = [];
 
       // Load salary notifications (Admin only)
       if (user?.role === 'Admin') {
+        // FIX: employeeService.list(1000) (limit is first/only argument)
         const [employeesResponse, attendanceResponse, salaryResponse] = await Promise.all([
-          employeeService.list(undefined, 1000),
+          employeeService.list(1000),
           attendanceService.list(undefined, undefined, undefined),
-          // Add salaryService for checking paid status
           (await import('@/lib/database')).salaryService.list()
         ]);
 
@@ -166,9 +181,10 @@ export const NotificationCenter: React.FC = () => {
       if (user?.role !== 'Admin') {
         const newTaskNotifications: NewTaskNotification[] = tasks
           .filter((task: any) => {
-            const taskcreated_at = new Date(task.$created_at);
-            const lastCheck = new Date(lastCheckTime);
-            return taskcreated_at > lastCheck && task.assigneeId === user.$id && task.status === 'pending';
+            // FIX: use user.id and task.assignee_id
+            const taskcreated_at = new Date(task.$created_at).toISOString();
+            const lastCheck = lastCheckTime;
+            return taskcreated_at > lastCheck && task.assignee_id === user.id && task.status === 'pending';
           })
           .map((task: any) => ({
             $id: task.$id,
@@ -207,7 +223,8 @@ export const NotificationCenter: React.FC = () => {
         .filter((task: any) => {
           const due_date = new Date(task.due_date);
           const isOverdue = task.status !== 'completed' && due_date < currentDate;
-          const isAssignedToUser = user?.role === 'Admin' || task.assigneeId === user?.$id;
+          // FIX: use user.id and task.assignee_id
+          const isAssignedToUser = user?.role === 'Admin' || task.assignee_id === user.id;
           return isOverdue && isAssignedToUser;
         })
         .map((task: any) => ({
@@ -224,7 +241,8 @@ export const NotificationCenter: React.FC = () => {
       // Update last check time
       const newCheckTime = new Date().toISOString();
       setLastCheckTime(newCheckTime);
-      localStorage.setItem(`lastNotificationCheck_${user.$id}`, newCheckTime);
+      // FIX: use user.id not user.$id
+      localStorage.setItem(`lastNotificationCheck_${user.id}`, newCheckTime);
       
       setNotifications(allNotifications);
       
@@ -260,6 +278,118 @@ export const NotificationCenter: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Real-time subscription for tasks and salary
+  useEffect(() => {
+    if (!user) return;
+
+    // --- Real-time Task Notifications for ALL users ---
+    const handleRealtimeTask = (event: 'INSERT' | 'UPDATE' | 'DELETE', payload: any) => {
+      setNotifications(prev => {
+        let updated = [...prev];
+        const task = (event === 'DELETE' ? payload.old : payload.new);
+        if (!task) return updated;
+
+        // Find employee for assignee and creator
+        const assignee = employeeMap[task.assignee_id];
+        // REMOVE: const creator = employeeMap[task.created_by];
+
+        // Who should see this notification?
+        const isAssignedToUser =
+          user?.role === 'Admin' ||
+          user?.role === 'Manager' ||
+          task.assignee_id === user?.id;
+
+        // New task notification for all relevant users
+        if (event === 'INSERT' && isAssignedToUser) {
+          if (!updated.some(n => n.$id === task.id && n.type === 'new_task')) {
+            updated.unshift({
+              $id: task.id,
+              title: task.title,
+              assignee_name: assignee?.name || task.assignee_name,
+              task_type: task.task_type || 'general',
+              created_at: task.created_at,
+              type: 'new_task'
+            });
+          }
+        }
+
+        // Overdue task notification
+        const isOverdue = task.status !== 'completed' && new Date(task.due_date) < new Date();
+        if ((event === 'INSERT' || event === 'UPDATE') && isOverdue && isAssignedToUser) {
+          if (!updated.some(n => n.$id === task.id && n.type === 'task')) {
+            updated.unshift({
+              $id: task.id,
+              title: task.title,
+              assignee_name: assignee?.name || task.assignee_name,
+              due_date: task.due_date,
+              priority: task.priority || 'medium',
+              type: 'task'
+            });
+          }
+        } else if ((event === 'UPDATE' || event === 'INSERT') && !isOverdue) {
+          updated = updated.filter(n => !(n.$id === task.id && n.type === 'task'));
+        }
+
+        // Remove notification if task deleted or no longer relevant
+        if (event === 'DELETE' || (!isAssignedToUser && user?.role !== 'Admin' && user?.role !== 'Manager')) {
+          updated = updated.filter(n => n.$id !== task.id);
+        }
+
+        // Remove duplicate notifications for the same task
+        const seen = new Set();
+        return updated.filter(n => {
+          const key = n.$id + '_' + n.type;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      });
+    };
+
+    const unsubscribeTask = taskService.subscribe(handleRealtimeTask);
+
+    // --- Real-time Salary Notifications for Employees ---
+    let unsubscribeSalary: (() => void) | undefined;
+    if (user?.employeeData?.auth_user_id) {
+      // FIX: Add type assertion for subscribe, and explicit types for event/payload
+      const subscribeSalary = (salaryService as any).subscribe as
+        | ((cb: (event: string, payload: any) => void) => () => void)
+        | undefined;
+      if (subscribeSalary) {
+        unsubscribeSalary = subscribeSalary((event: string, payload: any) => {
+          if (
+            event === 'INSERT' &&
+            payload?.new?.employee_id === user.employeeData.auth_user_id
+          ) {
+            const emp = employeeMap[payload.new.employee_id];
+            setNotifications(prev => {
+              if (prev.some(n => n.$id === payload.new.id && n.type === 'salary')) return prev;
+              return [
+                {
+                  $id: payload.new.id,
+                  name: emp?.name || user.employeeData.name,
+                  role: emp?.role || user.employeeData.role,
+                  salary_date: payload.new.pay_date,
+                  presentDays: 0,
+                  absentDays: 0,
+                  halfDays: 0,
+                  totalDays: 0,
+                  type: 'salary'
+                },
+                ...prev
+              ];
+            });
+          }
+        });
+      }
+    }
+
+    return () => {
+      if (unsubscribeTask) unsubscribeTask();
+      if (unsubscribeSalary) unsubscribeSalary();
+    };
+  }, [user, employeeMap]);
 
   const handleNotificationClick = (notification: Notification) => {
     if (notification.type === 'salary') {

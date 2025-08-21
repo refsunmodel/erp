@@ -90,6 +90,9 @@ export const Tasks: React.FC = () => {
     user?.role === 'Manager' ||
     user?.role === 'Graphic Designer';
 
+  // Add a map of userId (UUID) to employee name/email for quick lookup
+  const [userIdToName, setUserIdToName] = useState<Record<string, string>>({});
+
   useEffect(() => {
     loadTasks();
     if (
@@ -110,6 +113,34 @@ export const Tasks: React.FC = () => {
         assignee_id: user.employeeData?.auth_user_id || '' // Use auth_user_id for self-assignment
       }));
     }
+
+    // --- Real-time subscription for tasks ---
+    const unsubscribe = taskService.subscribe((event, payload) => {
+      if (!payload || !payload.new && !payload.old) return;
+      setTasks(prevTasks => {
+        if (event === 'INSERT') {
+          // Add new task if not present
+          const exists = prevTasks.some(t => t.$id === payload.new.id);
+          if (!exists) {
+            return [{ ...payload.new, $id: payload.new.id, $createdAt: payload.new.created_at }, ...prevTasks];
+          }
+        } else if (event === 'UPDATE') {
+          // Update the task in the list
+          return prevTasks.map(t =>
+            t.$id === payload.new.id
+              ? { ...t, ...payload.new, $id: payload.new.id, $createdAt: payload.new.created_at }
+              : t
+          );
+        } else if (event === 'DELETE') {
+          // Remove the deleted task
+          return prevTasks.filter(t => t.$id !== payload.old.id);
+        }
+        return prevTasks;
+      });
+    });
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [user]);
 
   const loadTasks = async () => {
@@ -158,6 +189,15 @@ export const Tasks: React.FC = () => {
       });
 
       setEmployees(validEmployees as unknown as Employee[]);
+
+      // Load all employees for mapping UUID to name/email
+      employeeService.list(1000).then(res => {
+        const map: Record<string, string> = {};
+        (res.data || []).forEach((emp: any) => {
+          map[emp.authUserId] = emp.name || emp.email || emp.authUserId;
+        });
+        setUserIdToName(map);
+      });
     } catch (error: any) {
       console.error('Failed to load employees:', error);
     }
@@ -212,6 +252,7 @@ export const Tasks: React.FC = () => {
         throw new Error('Selected employee does not have a valid user account');
       }
 
+
       const taskData = {
         order_no: formData.order_no || undefined,
         title: formData.title,
@@ -224,7 +265,7 @@ export const Tasks: React.FC = () => {
         due_time: formData.due_time,
         priority: formData.priority,
         status: 'pending',
-        created_by: user?.employeeData?.auth_user_id || user?.id || null, // Use a UUID or null
+        created_by: user?.id, // <-- Use UUID, not email
         file_url: formData.file_url,
         customer_phone: formData.customer_phone,
         printing_type: formData.printing_type,
@@ -336,6 +377,13 @@ export const Tasks: React.FC = () => {
           nextAssignee = supervisorWorkloads[0].supervisor;
         }
         if (nextAssignee && nextAssignee.authUserId) {
+          // Fix: show user name/email, not auth id
+          const createdBy =
+            user?.employeeData?.name ||
+            user?.name ||
+            user?.email ||
+            '';
+
           const deliveryTaskData = {
             title: `Delivery - ${task.title}`,
             description: task.description,
@@ -347,7 +395,7 @@ export const Tasks: React.FC = () => {
             priority: task.priority,
             due_date: task.due_date,
             due_time: task.due_time,
-            created_by: user?.name || user?.email || 'System',
+            created_by: createdBy, // Show name/email, not auth id
             original_order_id: task.original_order_id || task.$id,
             parent_task_id: task.$id,
             file_url: task.file_url,
@@ -424,7 +472,7 @@ export const Tasks: React.FC = () => {
       title: task.title,
       description: task.description,
       task_type: task.task_type || 'designing',
-      assignee_id: assignedEmployee?.$id || '', // Still use $id for UI selection, but use authUserId for DB
+      assignee_id: assignedEmployee?.$id || '', // UI uses $id, DB uses authUserId
       assignee_name: task.assignee_name,
       due_date: task.due_date,
       due_time: task.due_time || '',
@@ -460,6 +508,7 @@ export const Tasks: React.FC = () => {
         customer_phone: formData.customer_phone,
         printing_type: formData.printing_type,
         last_updated: new Date().toISOString(),
+        created_by: editingTask.created_by, // keep original creator UUID
       };
 
       await taskService.update(editingTask.$id, updateData);
@@ -529,6 +578,11 @@ export const Tasks: React.FC = () => {
   const formatStatus = (status: Task['status']) => {
     return status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
+
+  // Memoized function to get creator name/email from UUID
+  const getCreatorName = useCallback((uuid: string) => {
+    return userIdToName[uuid] || uuid;
+  }, [userIdToName]);
 
   if (loading) {
     return (
@@ -878,6 +932,7 @@ export const Tasks: React.FC = () => {
                     <TableHead className="w-32 sm:w-auto">Due Date</TableHead>
                     <TableHead className="w-32 sm:w-auto">File Link</TableHead>
                     <TableHead className="w-24 sm:w-auto">Status</TableHead>
+                    {/* Show Created By for Admin/Manager */}
                     <TableHead className="w-32 sm:w-auto">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -963,6 +1018,7 @@ export const Tasks: React.FC = () => {
                           </Badge>
                         </div>
                       </TableCell>
+          
                       <TableCell>
                         {/* Actions column logic */}
                         <div className="flex flex-col space-y-1 min-w-[120px]">
@@ -1051,7 +1107,7 @@ export const Tasks: React.FC = () => {
                                 Edit
                               </Button>
                               <Badge variant="outline" className="text-xs hidden lg:inline-flex">
-                                Created by {task.created_by}
+                                Created by                            {getCreatorName(task.created_by)}
                               </Badge>
                             </>
                           )}

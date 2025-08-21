@@ -53,7 +53,7 @@ export const Documents: React.FC = () => {
     try {
       setLoading(true);
       const response = await documentService.list();
-      setDocuments(response.documents as unknown as Document[]);
+      setDocuments((response.data || []) as unknown as Document[]);
     } catch (error: any) {
       toast({
         title: "Error",

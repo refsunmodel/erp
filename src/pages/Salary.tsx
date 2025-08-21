@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DollarSign, Calendar, Loader2 } from 'lucide-react';
-import { salaryService, employeeService } from '@/lib/database';
+import { salaryService } from '@/lib/database';
 import { useToast } from '@/hooks/use-toast';
 
 interface SalaryInfo {
@@ -26,7 +26,7 @@ interface Employee {
   name: string;
   email: string;
   role: string;
-  annualSalary: number;
+  annual_salary: number;
   modeOfPayment?: string;
   salaryDate?: string;
   authUserId?: string; // Add this field for correct lookup
@@ -58,8 +58,22 @@ export const Salary: React.FC = () => {
       // Use the correct employee id for salary lookup (should be employee.$id)
       const salaryResponse = await salaryService.getByEmployee(employee.$id);
       // Accept both .data and .documents for compatibility
-      const salaryArr = salaryResponse.data || salaryResponse.documents || [];
-      setSalaryHistory(salaryArr as SalaryInfo[]);
+      const salaryArr = salaryResponse.data || [];
+      // Map snake_case to camelCase for SalaryInfo
+      const mappedArr = salaryArr.map((s: any) => ({
+        $id: s.id,
+        month: s.month,
+        baseSalary: s.base_salary,
+        overtime: s.overtime,
+        bonus: s.bonus,
+        deductions: s.deductions,
+        advanceSalary: s.advance_salary,
+        netSalary: s.net_salary,
+        status: s.status,
+        payDate: s.pay_date,
+        $createdAt: s.created_at,
+      }));
+      setSalaryHistory(mappedArr as SalaryInfo[]);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -141,7 +155,7 @@ export const Salary: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Current Month</p>
                 <p className="text-2xl font-bold">
-                  {formatSalaryAmount(currentMonthSalary?.netSalary || (employeeData.annualSalary / 12))}
+                  {formatSalaryAmount(currentMonthSalary?.netSalary || (employeeData.annual_salary / 12))}
                 </p>
                 <p className="text-xs text-gray-500">{formatMonth(currentMonth)}</p>
               </div>
@@ -184,7 +198,7 @@ export const Salary: React.FC = () => {
               <div className="text-center p-4 bg-blue-50 rounded-lg">
                 <p className="text-sm text-gray-600">Base Salary</p>
                 <p className="text-xl font-bold text-blue-600">
-                  {formatSalaryAmount(currentMonthSalary.base_salary)}
+                  {formatSalaryAmount(currentMonthSalary.baseSalary)}
                 </p>
               </div>
               <div className="text-center p-4 bg-green-50 rounded-lg">
@@ -261,7 +275,7 @@ export const Salary: React.FC = () => {
                     </TableCell>
                     {user?.role === 'Admin' && (
                       <>
-                        <TableCell>{formatSalaryAmount(salary?.base_salary ?? salary?.baseSalary ?? 0)}</TableCell>
+                        <TableCell>{formatSalaryAmount(salary?.baseSalary ?? 0)}</TableCell>
                         <TableCell className="text-green-600">
                           +{formatSalaryAmount(salary?.overtime ?? 0)}
                         </TableCell>
@@ -272,10 +286,10 @@ export const Salary: React.FC = () => {
                           -{formatSalaryAmount(salary?.deductions ?? 0)}
                         </TableCell>
                         <TableCell className="text-orange-600">
-                          -{formatSalaryAmount(salary?.advanceSalary ?? salary?.advance_salary ?? 0)}
+                          -{formatSalaryAmount(salary?.advanceSalary ?? 0)}
                         </TableCell>
                         <TableCell className="font-bold">
-                          {formatSalaryAmount(salary?.netSalary ?? salary?.net_salary ?? 0)}
+                          {formatSalaryAmount(salary?.netSalary ?? 0)}
                         </TableCell>
                       </>
                     )}
@@ -287,8 +301,6 @@ export const Salary: React.FC = () => {
                     <TableCell>
                       {salary?.payDate
                         ? new Date(salary.payDate).toLocaleDateString()
-                        : salary?.pay_date
-                        ? new Date(salary.pay_date).toLocaleDateString()
                         : '-'}
                     </TableCell>
                   </TableRow>
@@ -329,7 +341,7 @@ export const Salary: React.FC = () => {
               {user?.role === 'Admin' && (
                 <div>
                   <p className="text-sm font-medium text-gray-600">Annual Salary</p>
-                  <p className="text-lg font-bold">{formatSalaryAmount(employeeData.annualSalary)}</p>
+                  <p className="text-lg font-bold">{formatSalaryAmount(employeeData.annual_salary)}</p>
                 </div>
               )}
               <div>

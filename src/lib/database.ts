@@ -51,7 +51,7 @@ export const employeeService = {
         storeId: emp.store_id,
         status: emp.status,
         authUserId: emp.auth_user_id,
-        annualSalary: emp.annual_salary,
+        annual_salary: emp.annual_salary,
         modeOfPayment: emp.mode_of_payment,
         salaryDate: emp.salary_date,
         $createdAt: emp.created_at,
@@ -86,7 +86,7 @@ export const employeeService = {
       storeId: emp.store_id,
       status: emp.status,
       authUserId: emp.auth_user_id,
-      annualSalary: emp.annual_salary,
+      annual_salary: emp.annual_salary,
       modeOfPayment: emp.mode_of_payment,
       salaryDate: emp.salary_date,
       $createdAt: emp.created_at,
@@ -280,7 +280,24 @@ export const taskService = {
     }));
 
     return { data: mapped, error };
-  }
+  },
+
+  // Subscribe to real-time changes on the tasks table
+  subscribe(callback: (event: 'INSERT' | 'UPDATE' | 'DELETE', payload: any) => void) {
+    const channel = supabase
+      .channel('tasks-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: TABLES.TASKS },
+        (payload) => {
+          callback(payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE', payload);
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
 };
 
 // ---------------------- Daily Report Service ----------------------

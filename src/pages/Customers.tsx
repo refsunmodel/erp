@@ -49,7 +49,7 @@ export const Customers: React.FC = () => {
     try {
       setLoading(true);
       const response = await customerService.list();
-      setCustomers(response.documents as unknown as Customer[]);
+      setCustomers((response.data || []) as unknown as Customer[]);
     } catch (error: any) {
       toast({
         title: "Error",

@@ -78,7 +78,7 @@ export const Stats: React.FC = () => {
   const loadStores = async () => {
     try {
       const response = await storeService.list();
-      setStores(response.documents);
+      setStores(response.data || []);
     } catch (error: any) {
       console.error('Failed to load stores:', error);
     }
@@ -93,7 +93,12 @@ export const Stats: React.FC = () => {
       
       // Load overall stats
       const stats = await statsService.getOverallStats();
-      setStatsData(stats);
+      setStatsData({
+        ...stats,
+        totalRevenue: typeof (stats as any).totalRevenue === 'number'
+          ? (stats as any).totalRevenue
+          : (typeof stats.totalSales === 'number' ? stats.totalSales : 0),
+      });
 
       // Load sales trend data with date filtering
       const salesTrend = await statsService.getSalesData(
@@ -101,7 +106,10 @@ export const Stats: React.FC = () => {
         start,
         end
       );
-      setSalesData(salesTrend);
+      setSalesData((salesTrend as any[]).map((d: any) => ({
+        ...d,
+        revenue: d.sales, // fallback: revenue = sales
+      })));
 
       // Load store performance
       const [storesResponse, reportsResponse] = await Promise.all([
@@ -109,8 +117,8 @@ export const Stats: React.FC = () => {
         dailyReportService.list(undefined, undefined, start, end)
       ]);
 
-      const storePerf = storesResponse.documents.map((store: any) => {
-        const storeReports = reportsResponse.documents.filter((r: any) => r.storeId === store.$id);
+      const storePerf = (storesResponse.data || []).map((store: any) => {
+        const storeReports = (reportsResponse.data || []).filter((r: any) => r.storeId === store.$id);
         const totalSales = storeReports.reduce((sum: number, r: any) => sum + (r.sales || 0), 0);
         
         return {

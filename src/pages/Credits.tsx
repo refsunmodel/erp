@@ -54,7 +54,7 @@ export const Credits: React.FC = () => {
     try {
       setLoading(true);
       const response = await creditService.list();
-      const creditsWithStatus = response.documents.map((credit: any) => ({
+      const creditsWithStatus = (response.data || []).map((credit: any) => ({
         ...credit,
         status: getStatus(credit.dueDate, credit.status)
       }));

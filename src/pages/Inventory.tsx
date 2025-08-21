@@ -59,7 +59,7 @@ export const Inventory: React.FC = () => {
     try {
       setLoading(true);
       const response = await inventoryService.list();
-      const itemsWithStatus = response.documents.map((item: any) => ({
+      const itemsWithStatus = (response.data || []).map((item: any) => ({
         ...item,
         status: getStockStatus(item.quantity, item.minStockLevel)
       }));

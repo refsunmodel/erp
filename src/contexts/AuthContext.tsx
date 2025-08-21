@@ -11,6 +11,7 @@ type UserRole =
 interface User {
   id: string;
   email: string;
+  name?: string; // <-- Add name property
   role: UserRole;
   storeId?: string;
   employeeData?: any;
@@ -124,6 +125,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userObj: User = {
         id: supaUser.id,
         email: supaUser.email ?? '',
+        name: employeeData?.name || supaUser.user_metadata?.name || '', // <-- Set name if available
         role,
         storeId,
         employeeData,

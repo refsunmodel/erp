@@ -167,12 +167,12 @@ export const Sidebar: React.FC = () => {
             <div className="flex items-center space-x-3">
               <div className="h-8 w-8 rounded-full bg-gray-300 flex items-center justify-center">
                 <span className="text-sm font-medium">
-                  {user.name?.charAt(0) || user.email.charAt(0).toUpperCase()}
+                  {user.employeeData?.name?.charAt(0) || user.email.charAt(0).toUpperCase()}
                 </span>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">
-                  {user.name || user.email}
+                  {user.employeeData?.name || user.email}
                 </p>
                 <p className="text-xs text-gray-500 truncate">{user.email}</p>
               </div>

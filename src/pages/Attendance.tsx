@@ -108,7 +108,7 @@ export const Attendance: React.FC = () => {
         await attendanceService.update(existingRecord.$id, {
           status: attendanceData.status,
           day_type: attendanceData.day_type,
-          marked_by: user?.name || user?.email || 'Unknown'
+          marked_by: user?.employeeData?.name || user?.email || 'Unknown'
         });
         toast({
           title: "Attendance Updated",
@@ -122,7 +122,7 @@ export const Attendance: React.FC = () => {
           date: selectedDate,
           status: attendanceData.status,
           day_type: attendanceData.day_type,
-          marked_by: user?.name || user?.email || 'Unknown'
+          marked_by: user?.employeeData?.name || user?.email || 'Unknown'
         });
         toast({
           title: "Attendance Marked",
