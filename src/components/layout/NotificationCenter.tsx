@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLocation } from 'react-router-dom';
 import { employeeService, attendanceService, taskService, salaryService } from '@/lib/database';
-import { useToast } from '@/hooks/use-toast';
-import { Bell, Calendar, DollarSign, CheckCircle, AlertCircle } from 'lucide-react';
+import { Bell, DollarSign, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -15,18 +14,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { playNotificationSound, updateFavicon } from '@/utils/notificationSound';
-
-interface SalaryNotification {
-  $id: string;
-  name: string;
-  role: string;
-  salary_date: string;
-  presentDays: number;
-  absentDays: number;
-  halfDays: number;
-  totalDays: number;
-  type: 'salary';
-}
 
 interface TaskNotification {
   $id: string;
@@ -41,132 +28,140 @@ interface TaskNotification {
 interface NewTaskNotification {
   $id: string;
   title: string;
+  due_date: string;
+  due_time?: string;
+  type: 'new-task';
   assignee_name: string;
-  task_type: string;
-  created_at: string;
-  type: 'new_task';
+}
+
+interface SalaryNotification {
+  $id: string;
+  employee_name: string;
+  salary_date: string;
+  type: 'salary-due';
+  attendance: {
+    present: number;
+    absent: number;
+    halfDay: number;
+  };
 }
 
 type Notification = SalaryNotification | TaskNotification | NewTaskNotification;
 
-export const NotificationCenter: React.FC = () => {
+interface NotificationCenterProps {
+  tasks?: any[]; // Accept tasks from parent (frontend state)
+}
+
+export const NotificationCenter: React.FC<NotificationCenterProps> = ({ tasks }) => {
   const { user } = useAuth();
   const location = useLocation();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
   const [previousNotificationCount, setPreviousNotificationCount] = useState(0);
-  const [lastCheckTime, setLastCheckTime] = useState<string>(() => {
-    // FIX: use user.id not user.$id
-    return localStorage.getItem(`lastNotificationCheck_${user?.id}`) || new Date().toISOString();
-  });
-  const { toast } = useToast();
-  const [employeeMap, setEmployeeMap] = useState<Record<string, any>>({});
+  // Removed: const [employeeMap, setEmployeeMap] = useState<Record<string, any>>({});
+  // Removed: const { toast } = useToast();
 
-  // Fetch all employees for mapping UUID to name/email
+  // Track new task IDs for real-time notification
+  const newTaskIdsRef = useRef<Set<string>>(new Set());
+  const [lastRealtimeTaskId, setLastRealtimeTaskId] = useState<string | null>(null);
+
+  // --- Real-time subscription for all task changes (INSERT, UPDATE, DELETE) ---
   useEffect(() => {
-    employeeService.list(1000).then(res => {
-      const arr = res.data || [];
-      // REMOVE: setEmployees(arr);
-      const map: Record<string, any> = {};
-      arr.forEach(emp => {
-        if (emp.authUserId) map[emp.authUserId] = emp;
-        if (emp.$id) map[emp.$id] = emp;
-      });
-      setEmployeeMap(map);
+    if (!user) return;
+    const unsubscribe = taskService.subscribe((event, payload) => {
+      let task: any = null;
+      if (event === 'INSERT' && payload?.new) {
+        task = payload.new;
+        // Only notify if assigned to current user or Admin/Manager
+        const relevant =
+          user.role === 'Admin' ||
+          user.role === 'Manager' ||
+          (user.employeeData?.auth_user_id && task.assignee_id === user.employeeData.auth_user_id);
+        if (relevant) {
+          if (!newTaskIdsRef.current.has(task.id)) {
+            newTaskIdsRef.current.add(task.id);
+            setLastRealtimeTaskId(task.id);
+            setNotifications(prev => [
+              {
+                $id: task.id,
+                title: task.title,
+                due_date: task.due_date,
+                due_time: task.due_time,
+                type: 'new-task',
+                assignee_name: task.assignee_name,
+              },
+              ...prev,
+            ]);
+            updateFavicon(true);
+          }
+        }
+      } else if (event === 'UPDATE' && payload?.new) {
+        task = payload.new;
+        const relevant =
+          user.role === 'Admin' ||
+          user.role === 'Manager' ||
+          (user.employeeData?.auth_user_id && task.assignee_id === user.employeeData.auth_user_id);
+        if (relevant) {
+          // Overdue task logic
+          const due_date = new Date(task.due_date);
+          const isOverdue = task.status !== 'completed' && due_date < new Date();
+          setNotifications(prev => {
+            // Remove previous notification for this task if exists
+            const filtered = prev.filter(n => n.$id !== task.id);
+            if (isOverdue) {
+              // Add/Update overdue notification
+              return [
+                {
+                  $id: task.id,
+                  title: task.title,
+                  assignee_name: task.assignee_name,
+                  due_date: task.due_date,
+                  priority: task.priority || 'medium',
+                  type: 'task'
+                },
+                ...filtered,
+              ];
+            } else {
+              // Remove overdue notification if task is no longer overdue
+              return filtered;
+            }
+          });
+          updateFavicon(true);
+        }
+      } else if (event === 'DELETE' && payload?.old) {
+        task = payload.old;
+        setNotifications(prev => prev.filter(n => n.$id !== task.id));
+        updateFavicon(notifications.length > 1);
+      }
     });
-  }, []);
-
-  useEffect(() => {
-    if (user) {
-      loadNotifications();
-      // Set up periodic check for new notifications every 2 minutes
-      const interval = setInterval(loadNotifications, 120000); // Check every 2 minutes
-      return () => clearInterval(interval);
-    }
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [user]);
 
-  // Load notifications when route changes (tab change)
+  // Play notification sound for new real-time task
+  useEffect(() => {
+    if (lastRealtimeTaskId) {
+      playNotificationSound();
+    }
+  }, [lastRealtimeTaskId]);
+
+  // Load notifications when user or route changes
   useEffect(() => {
     if (user) {
       loadNotifications();
     }
-  }, [location.pathname, user]);
+  }, [user, location.pathname]);
 
+  // Load all notifications (overdue, salary, etc)
   const loadNotifications = async () => {
     if (!user) return;
     try {
       setLoading(true);
       const currentDate = new Date();
-      document.title = "Arun offset Edgesync ERP by codetoli technology";
       const allNotifications: Notification[] = [];
 
-      // Load salary notifications (Admin only)
-      if (user?.role === 'Admin') {
-        // FIX: employeeService.list(1000) (limit is first/only argument)
-        const [employeesResponse, attendanceResponse, salaryResponse] = await Promise.all([
-          employeeService.list(1000),
-          attendanceService.list(undefined, undefined, undefined),
-          (await import('@/lib/database')).salaryService.list()
-        ]);
-
-        const employees = (employeesResponse.data || []).map((e: any) => ({ ...e, $id: e.id }));
-        const attendance = (attendanceResponse.data || []).map((a: any) => ({ ...a, $id: a.id }));
-        const salaries = (salaryResponse.data || []).map((s: any) => ({ ...s, $id: s.id }));
-
-        const salaryNotifications: SalaryNotification[] = [];
-        const currentDateObj = new Date();
-
-        for (const employee of employees) {
-          if (employee.salary_date) {
-            const salaryDay = parseInt(employee.salary_date);
-            // Find current and previous salary date window
-            const now = new Date();
-            let currentsalary_date = new Date(now.getFullYear(), now.getMonth(), salaryDay);
-            if (now < currentsalary_date) {
-              // If today is before this month's salary date, use previous month
-              currentsalary_date = new Date(now.getFullYear(), now.getMonth() - 1, salaryDay);
-            }
-            let prevsalary_date = new Date(currentsalary_date);
-            prevsalary_date.setMonth(currentsalary_date.getMonth() - 1);
-
-            // Attendance window: prevsalary_date (exclusive) to currentsalary_date (inclusive)
-            const attendanceWindow = attendance.filter((att: any) => {
-              if (att.employeeId !== employee.$id) return false;
-              const attDate = new Date(att.date);
-              return attDate > prevsalary_date && attDate <= currentsalary_date;
-            });
-
-            const presentDays = attendanceWindow.filter((att: any) => att.status === 'Present').length;
-            const absentDays = attendanceWindow.filter((att: any) => att.status === 'Absent').length;
-            const halfDays = attendanceWindow.filter((att: any) => att.status === 'Half Day').length;
-
-            // Check if salary is already paid for this month
-            const currentMonth = now.toISOString().slice(0, 7);
-            const paidSalary = salaries.find(
-              (s: any) => s.employeeId === employee.$id && s.month === currentMonth && s.status === 'Paid'
-            );
-
-            // Show notification if salary due (within 3 days of salary date) and not paid
-            const daysDifference = Math.abs(currentDateObj.getDate() - salaryDay);
-            if ((!paidSalary) && (daysDifference <= 3 || (salaryDay > 28 && currentDateObj.getDate() <= 3))) {
-              salaryNotifications.push({
-                $id: employee.$id,
-                name: employee.name,
-                role: employee.role,
-                salary_date: employee.salary_date,
-                presentDays,
-                absentDays,
-                halfDays,
-                totalDays: attendanceWindow.length,
-                type: 'salary'
-              } as any);
-            }
-          }
-        }
-        allNotifications.push(...salaryNotifications);
-      }
-
-      // Load tasks for notifications
+      // --- TASK NOTIFICATIONS ---
       let tasksResponse;
       if (user.role === 'Admin' || user.role === 'Manager') {
         tasksResponse = await taskService.list({ limit: 100 });
@@ -177,54 +172,12 @@ export const NotificationCenter: React.FC = () => {
       }
       const tasks = (tasksResponse.data || []).map((t: any) => ({ ...t, $id: t.id, $created_at: t.created_at }));
 
-      // For employees: Show new tasks assigned to them since last check
-      if (user?.role !== 'Admin') {
-        const newTaskNotifications: NewTaskNotification[] = tasks
-          .filter((task: any) => {
-            // FIX: use user.id and task.assignee_id
-            const taskcreated_at = new Date(task.$created_at).toISOString();
-            const lastCheck = lastCheckTime;
-            return taskcreated_at > lastCheck && task.assignee_id === user.id && task.status === 'pending';
-          })
-          .map((task: any) => ({
-            $id: task.$id,
-            title: task.title,
-            assignee_name: task.assignee_name,
-            task_type: task.task_type || 'general',
-            created_at: task.$created_at,
-            type: 'new_task' as const
-          }));
-
-        allNotifications.push(...newTaskNotifications);
-      }
-
-      // For admin: Show new tasks created since last check
-      if (user?.role === 'Admin') {
-        const newTaskNotifications: NewTaskNotification[] = tasks
-          .filter((task: any) => {
-            const taskcreated_at = new Date(task.$created_at);
-            const lastCheck = new Date(lastCheckTime);
-            return taskcreated_at > lastCheck;
-          })
-          .map((task: any) => ({
-            $id: task.$id,
-            title: task.title,
-            assignee_name: task.assignee_name,
-            task_type: task.task_type || 'general',
-            created_at: task.$created_at,
-            type: 'new_task' as const
-          }));
-
-        allNotifications.push(...newTaskNotifications);
-      }
-
-      // Overdue tasks for all users
+      // Overdue tasks
       const taskNotifications: TaskNotification[] = tasks
         .filter((task: any) => {
           const due_date = new Date(task.due_date);
           const isOverdue = task.status !== 'completed' && due_date < currentDate;
-          // FIX: use user.id and task.assignee_id
-          const isAssignedToUser = user?.role === 'Admin' || task.assignee_id === user.id;
+          const isAssignedToUser = user?.role === 'Admin' || task.assignee_id === user.employeeData?.auth_user_id;
           return isOverdue && isAssignedToUser;
         })
         .map((task: any) => ({
@@ -233,44 +186,81 @@ export const NotificationCenter: React.FC = () => {
           assignee_name: task.assignee_name,
           due_date: task.due_date,
           priority: task.priority || 'medium',
-          type: 'task' as const
+          type: 'task'
         }));
 
-      allNotifications.push(...taskNotifications);
-      
-      // Update last check time
-      const newCheckTime = new Date().toISOString();
-      setLastCheckTime(newCheckTime);
-      // FIX: use user.id not user.$id
-      localStorage.setItem(`lastNotificationCheck_${user.id}`, newCheckTime);
-      
-      setNotifications(allNotifications);
-      
-      // Check if there are new notifications and play sound
-      const hasNewNotifications = allNotifications.some(notification => {
-        if (notification.type === 'new_task') {
-          const taskcreated_at = new Date(notification.created_at);
-          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-          return taskcreated_at > fiveMinutesAgo;
-        }
-        return false;
-      });
-      
-      if (hasNewNotifications || (allNotifications.length > previousNotificationCount && previousNotificationCount >= 0)) {
-        playNotificationSound();
-        
-        // Show toast notification for new tasks
-        const newTasks = allNotifications.filter(n => n.type === 'new_task');
-        if (newTasks.length > 0) {
-          toast({
-            title: "New Task Assigned",
-            description: `You have ${newTasks.length} new task${newTasks.length > 1 ? 's' : ''} assigned to you.`,
-          });
+      // --- NEW TASK NOTIFICATION (initial load, last 2 days) ---
+      if (user.employeeData?.auth_user_id) {
+        const newTasks = tasks
+          .filter((task: any) =>
+            task.assignee_id === user.employeeData.auth_user_id &&
+            new Date(task.$createdAt) > new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+          )
+          .map((task: any) => ({
+            $id: task.$id,
+            title: task.title,
+            due_date: task.due_date,
+            due_time: task.due_time,
+            type: "new-task" as const, // Fix: ensure type is literal "new-task"
+            assignee_name: task.assignee_name
+          }));
+        // Add to ref so real-time doesn't duplicate
+        newTasks.forEach(nt => newTaskIdsRef.current.add(nt.$id));
+        allNotifications.push(...newTasks);
+      }
+
+      // --- SALARY DUE NOTIFICATION ---
+      if (user.role === 'Admin') {
+        const employeesRes = await employeeService.list(1000);
+        const employees = employeesRes.data || [];
+        const salaryRes = await salaryService.list(undefined, 1000);
+        const salaryRecords = salaryRes.data || [];
+        const monthStr = new Date().toISOString().slice(0, 7);
+        const attendanceRes = await attendanceService.list(undefined, undefined, monthStr, 1000);
+        const attendanceRecords = attendanceRes.data || [];
+
+        for (const emp of employees) {
+          if (!emp.salaryDate || !emp.status || emp.status !== 'Active') continue;
+          const salaryDay = Number(emp.salaryDate);
+          if (isNaN(salaryDay)) continue;
+          const now = new Date();
+          const salaryDateObj = new Date(now.getFullYear(), now.getMonth(), salaryDay);
+          const daysDiff = (salaryDateObj.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+
+          // Only show if salary date is within next 2 days and not already paid for this month
+          const alreadyPaid = salaryRecords.some((s: any) =>
+            (s.employee_id === emp.$id || s.employee_id === emp.authUserId) &&
+            s.month === monthStr &&
+            s.status === 'Paid'
+          );
+          if (daysDiff >= 0 && daysDiff <= 2 && !alreadyPaid) {
+            const empAttendance = attendanceRecords.filter((a: any) =>
+              a.employee_id === emp.$id || a.employee_id === emp.authUserId
+            );
+            const present = empAttendance.filter((a: any) => a.status === 'Present').length;
+            const absent = empAttendance.filter((a: any) => a.status === 'Absent').length;
+            const halfDay = empAttendance.filter((a: any) => a.day_type === 'Half Day').length;
+            allNotifications.push({
+              $id: emp.$id,
+              employee_name: emp.name,
+              salary_date: emp.salaryDate, // Fix: use camelCase
+              type: 'salary-due',
+              attendance: { present, absent, halfDay }
+            });
+          }
         }
       }
+
+      // Add overdue tasks
+      allNotifications.push(...taskNotifications);
+
+      // Play sound if notification count increased
+      if (allNotifications.length > previousNotificationCount) {
+        playNotificationSound();
+      }
       setPreviousNotificationCount(allNotifications.length);
-      
-      // Update favicon based on notification count
+
+      setNotifications(allNotifications);
       updateFavicon(allNotifications.length > 0);
     } catch (error: any) {
       console.error('Failed to load notifications:', error);
@@ -279,125 +269,11 @@ export const NotificationCenter: React.FC = () => {
     }
   };
 
-  // Real-time subscription for tasks and salary
-  useEffect(() => {
-    if (!user) return;
-
-    // --- Real-time Task Notifications for ALL users ---
-    const handleRealtimeTask = (event: 'INSERT' | 'UPDATE' | 'DELETE', payload: any) => {
-      setNotifications(prev => {
-        let updated = [...prev];
-        const task = (event === 'DELETE' ? payload.old : payload.new);
-        if (!task) return updated;
-
-        // Find employee for assignee and creator
-        const assignee = employeeMap[task.assignee_id];
-        // REMOVE: const creator = employeeMap[task.created_by];
-
-        // Who should see this notification?
-        const isAssignedToUser =
-          user?.role === 'Admin' ||
-          user?.role === 'Manager' ||
-          task.assignee_id === user?.id;
-
-        // New task notification for all relevant users
-        if (event === 'INSERT' && isAssignedToUser) {
-          if (!updated.some(n => n.$id === task.id && n.type === 'new_task')) {
-            updated.unshift({
-              $id: task.id,
-              title: task.title,
-              assignee_name: assignee?.name || task.assignee_name,
-              task_type: task.task_type || 'general',
-              created_at: task.created_at,
-              type: 'new_task'
-            });
-          }
-        }
-
-        // Overdue task notification
-        const isOverdue = task.status !== 'completed' && new Date(task.due_date) < new Date();
-        if ((event === 'INSERT' || event === 'UPDATE') && isOverdue && isAssignedToUser) {
-          if (!updated.some(n => n.$id === task.id && n.type === 'task')) {
-            updated.unshift({
-              $id: task.id,
-              title: task.title,
-              assignee_name: assignee?.name || task.assignee_name,
-              due_date: task.due_date,
-              priority: task.priority || 'medium',
-              type: 'task'
-            });
-          }
-        } else if ((event === 'UPDATE' || event === 'INSERT') && !isOverdue) {
-          updated = updated.filter(n => !(n.$id === task.id && n.type === 'task'));
-        }
-
-        // Remove notification if task deleted or no longer relevant
-        if (event === 'DELETE' || (!isAssignedToUser && user?.role !== 'Admin' && user?.role !== 'Manager')) {
-          updated = updated.filter(n => n.$id !== task.id);
-        }
-
-        // Remove duplicate notifications for the same task
-        const seen = new Set();
-        return updated.filter(n => {
-          const key = n.$id + '_' + n.type;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-      });
-    };
-
-    const unsubscribeTask = taskService.subscribe(handleRealtimeTask);
-
-    // --- Real-time Salary Notifications for Employees ---
-    let unsubscribeSalary: (() => void) | undefined;
-    if (user?.employeeData?.auth_user_id) {
-      // FIX: Add type assertion for subscribe, and explicit types for event/payload
-      const subscribeSalary = (salaryService as any).subscribe as
-        | ((cb: (event: string, payload: any) => void) => () => void)
-        | undefined;
-      if (subscribeSalary) {
-        unsubscribeSalary = subscribeSalary((event: string, payload: any) => {
-          if (
-            event === 'INSERT' &&
-            payload?.new?.employee_id === user.employeeData.auth_user_id
-          ) {
-            const emp = employeeMap[payload.new.employee_id];
-            setNotifications(prev => {
-              if (prev.some(n => n.$id === payload.new.id && n.type === 'salary')) return prev;
-              return [
-                {
-                  $id: payload.new.id,
-                  name: emp?.name || user.employeeData.name,
-                  role: emp?.role || user.employeeData.role,
-                  salary_date: payload.new.pay_date,
-                  presentDays: 0,
-                  absentDays: 0,
-                  halfDays: 0,
-                  totalDays: 0,
-                  type: 'salary'
-                },
-                ...prev
-              ];
-            });
-          }
-        });
-      }
-    }
-
-    return () => {
-      if (unsubscribeTask) unsubscribeTask();
-      if (unsubscribeSalary) unsubscribeSalary();
-    };
-  }, [user, employeeMap]);
-
   const handleNotificationClick = (notification: Notification) => {
-    if (notification.type === 'salary') {
-      // Navigate to employees page or show salary details
-      window.location.assign('/employees');
-    } else if (notification.type === 'task' || notification.type === 'new_task') {
-      // Navigate to tasks page
+    if (notification.type === 'new-task' || notification.type === 'task') {
       window.location.assign('/tasks');
+    } else if (notification.type === 'salary-due') {
+      window.location.assign('/employees');
     }
   };
 
@@ -408,27 +284,73 @@ export const NotificationCenter: React.FC = () => {
     });
   };
 
-  const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+  const getNotificationIcon = (notification: Notification) => {
+    if (notification.type === 'salary-due') {
+      return <DollarSign className="h-4 w-4 text-orange-600" />;
+    }
+    if (notification.type === 'new-task') {
+      return <Bell className="h-4 w-4 text-green-600" />;
+    }
+    // task
+    const priority = (notification as TaskNotification).priority;
+    return priority === 'high'
+      ? <AlertCircle className="h-4 w-4 text-red-600" />
+      : <CheckCircle className="h-4 w-4 text-blue-600" />;
   };
 
-  const getNotificationIcon = (notification: Notification) => {
-    if (notification.type === 'salary') {
-      return <DollarSign className="h-4 w-4 text-green-600" />;
-    } else if (notification.type === 'new_task') {
-      return <CheckCircle className="h-4 w-4 text-blue-600" />;
-    } else {
-      const priority = (notification as TaskNotification).priority;
-      return priority === 'high' 
-        ? <AlertCircle className="h-4 w-4 text-red-600" />
-        : <CheckCircle className="h-4 w-4 text-blue-600" />;
-    }
-  };
+  // --- Poll for new tasks every second using tasks prop ---
+  useEffect(() => {
+    if (!user || !tasks) return;
+    let prevIds = JSON.parse(localStorage.getItem('erp_task_ids') || '[]');
+    let prevCount = Number(localStorage.getItem('erp_task_count') || '0');
+
+    const interval = setInterval(() => {
+      // Only count tasks assigned to current user
+      const myTasks = (user.role === 'Admin' || user.role === 'Manager')
+        ? tasks
+        : tasks.filter((task: any) => task.assignee_id === user.employeeData?.auth_user_id);
+
+      // Find new tasks
+      const newTasks = myTasks.filter((task: any) => !prevIds.includes(task.$id));
+      if (newTasks.length > 0) {
+        newTasks.forEach((task: any) => {
+          setNotifications(prev => [
+            {
+              $id: task.$id,
+              title: task.title,
+              due_date: task.due_date,
+              due_time: task.due_time,
+              type: 'new-task',
+              assignee_name: task.assignee_name,
+            },
+            ...prev,
+          ]);
+          playNotificationSound();
+          updateFavicon(true);
+        });
+        prevIds = myTasks.map((t: any) => t.$id);
+        prevCount = myTasks.length;
+        localStorage.setItem('erp_task_count', String(prevCount));
+        localStorage.setItem('erp_task_ids', JSON.stringify(prevIds));
+      } else if (myTasks.length < prevCount) {
+        prevIds = myTasks.map((t: any) => t.$id);
+        prevCount = myTasks.length;
+        localStorage.setItem('erp_task_count', String(prevCount));
+        localStorage.setItem('erp_task_ids', JSON.stringify(prevIds));
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [user, tasks]);
+
+  // Backup: reload notifications from backend every 10 minutes
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      loadNotifications();
+    }, 10 * 60 * 1000); // 10 minutes
+    return () => clearInterval(interval);
+  }, [user, location.pathname]);
 
   return (
     <DropdownMenu>
@@ -436,8 +358,8 @@ export const NotificationCenter: React.FC = () => {
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5" />
           {notifications.length > 0 && (
-            <Badge 
-              variant="destructive" 
+            <Badge
+              variant="destructive"
               className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
             >
               {notifications.length}
@@ -451,7 +373,7 @@ export const NotificationCenter: React.FC = () => {
           Notifications
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        
+
         {loading ? (
           <div className="p-4 text-center text-muted-foreground">
             Loading notifications...
@@ -461,9 +383,9 @@ export const NotificationCenter: React.FC = () => {
             No notifications
           </div>
         ) : (
-          notifications.map((notification) => (
+          notifications.map((notification, idx) => (
             <DropdownMenuItem
-              key={notification.$id}
+              key={notification.$id || `${notification.type}-${idx}`}
               className="p-3 cursor-pointer hover:bg-muted/50"
               onClick={() => handleNotificationClick(notification)}
             >
@@ -474,60 +396,33 @@ export const NotificationCenter: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  {notification.type === 'salary' ? (
+                  {/* Salary Due Notification */}
+                  {notification.type === 'salary-due' ? (
                     <>
                       <div className="flex items-center justify-between">
                         <p className="font-medium text-sm truncate">
-                          {notification.name}
+                          Salary Due: {notification.employee_name}
                         </p>
-                        <span className="text-xs text-muted-foreground">
-                          Salary Due
+                        <span className="text-xs text-orange-600">
+                          Salary Date: {notification.salary_date}
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground mb-1">
-                        {notification.role}
+                        Attendance this month:
+                        <span className="ml-2 text-green-600">Present: {notification.attendance.present}</span>,
+                        <span className="ml-2 text-red-600">Absent: {notification.attendance.absent}</span>,
+                        <span className="ml-2 text-orange-600">Half Day: {notification.attendance.halfDay}</span>
                       </p>
-                      <div className="flex items-center gap-3 text-xs">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          <span>
-                            Present: {notification.presentDays}, Absent: {notification.absentDays}, Half Day: {notification.halfDays}
-                          </span>
-                        </div>
-                      </div>
                     </>
-                  ) : notification.type === 'new_task' ? (
+                  ) : notification.type === 'new-task' ? (
                     <>
                       <div className="flex items-center justify-between">
                         <p className="font-medium text-sm truncate">
-                          {user?.role === 'Admin' ? 'New Task Created' : 'New Task Assigned'}
+                          New Task Assigned
                         </p>
                         <span className="text-xs text-blue-600">
-                          {formatDateTime(notification.created_at)}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mb-1 truncate">
-                        {notification.title}
-                      </p>
-                      <div className="flex items-center gap-3 text-xs">
-                        <Badge variant="outline" className="text-xs">
-                          {notification.task_type}
-                        </Badge>
-                        {user?.role === 'Admin' && (
-                          <span className="text-muted-foreground">
-                            → {notification.assignee_name}
-                          </span>
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <p className="font-medium text-sm truncate">
-                          Overdue Task
-                        </p>
-                        <span className="text-xs text-red-600">
-                          {formatDate(notification.due_date)}
+                          {notification.due_date && formatDate(notification.due_date)}
+                          {notification.due_time ? `, ${notification.due_time}` : ''}
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground mb-1 truncate">
@@ -537,15 +432,35 @@ export const NotificationCenter: React.FC = () => {
                         <span className="text-muted-foreground">
                           Assigned to: {notification.assignee_name}
                         </span>
-                        <Badge 
-                          variant="outline" 
+                      </div>
+                    </>
+                  ) : (
+                    // Overdue Task
+                    <>
+                      <div className="flex items-center justify-between">
+                        <p className="font-medium text-sm truncate">
+                          Overdue Task
+                        </p>
+                        <span className="text-xs text-red-600">
+                          {formatDate((notification as TaskNotification).due_date)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mb-1 truncate">
+                        {(notification as TaskNotification).title}
+                      </p>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-muted-foreground">
+                          Assigned to: {(notification as TaskNotification).assignee_name}
+                        </span>
+                        <Badge
+                          variant="outline"
                           className={`text-xs ${
-                            notification.priority === 'high' ? 'border-red-500 text-red-700' :
-                            notification.priority === 'medium' ? 'border-yellow-500 text-yellow-700' :
+                            (notification as TaskNotification).priority === 'high' ? 'border-red-500 text-red-700' :
+                            (notification as TaskNotification).priority === 'medium' ? 'border-yellow-500 text-yellow-700' :
                             'border-green-500 text-green-700'
                           }`}
                         >
-                          {notification.priority}
+                          {(notification as TaskNotification).priority}
                         </Badge>
                       </div>
                     </>

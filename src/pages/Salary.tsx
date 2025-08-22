@@ -52,15 +52,17 @@ export const Salary: React.FC = () => {
     try {
       setLoading(true);
 
-      // Use employeeData from AuthContext for the current user
       setEmployeeData(employee);
 
-      // Use the correct employee id for salary lookup (should be employee.$id)
-      const salaryResponse = await salaryService.getByEmployee(employee.$id);
-      // Accept both .data and .documents for compatibility
+      // Use employee.id for matching, not $id
+      const employeeId = employee.id || employee.$id;
+      const salaryResponse = await salaryService.getByEmployee(employeeId);
       const salaryArr = salaryResponse.data || [];
+      // Filter: only show salary records where employee_id matches employee.id
+      const filteredArr = salaryArr.filter((s: any) => s.employee_id === employeeId);
+
       // Map snake_case to camelCase for SalaryInfo
-      const mappedArr = salaryArr.map((s: any) => ({
+      const mappedArr = filteredArr.map((s: any) => ({
         $id: s.id,
         month: s.month,
         baseSalary: s.base_salary,
