@@ -149,9 +149,9 @@ export const Tasks: React.FC = () => {
       let response;
       // Admin/Manager: show all tasks, others: only assigned tasks
       if (user?.role === 'Admin' || user?.role === 'Manager') {
-        response = await taskService.list({ limit: 1000 });
+        response = await taskService.list({ limit: 300 });
       } else if (user?.employeeData?.auth_user_id) {
-        response = await taskService.list({ userAuthUserId: user.employeeData.auth_user_id, limit: 1000 });
+        response = await taskService.list({ userAuthUserId: user.employeeData.auth_user_id, limit: 300 });
       } else {
         response = { data: [] };
       }

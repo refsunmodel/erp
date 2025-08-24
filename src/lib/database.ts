@@ -163,7 +163,7 @@ export const taskService = {
   list: async (
     { 
       userAuthUserId, 
-      limit = 20, 
+      limit = 300, 
       page = 0, 
       search, 
       status, 
