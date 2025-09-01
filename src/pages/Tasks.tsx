@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Input } from '@/components/ui/input'; 
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -1459,7 +1459,12 @@ export const Tasks: React.FC = () => {
                         for (let i = 0; i < 3 && t; i++) {
                           if (t.task_type === 'designing' && !designer) designer = t.assignee_name;
                           if (t.task_type === 'printing' && !printingTech) printingTech = t.assignee_name;
-                          t = t.parent_task_id ? tasks.find(x => x.$id === t.parent_task_id) ?? null : null;
+                          t = t?.parent_task_id
+    ? (() => {
+        const parent = tasks.find(x => x.$id === t?.parent_task_id);
+        return parent ? parent : null;
+      })()
+    : null;
                         }
                         return (
                           <>
@@ -1502,7 +1507,12 @@ export const Tasks: React.FC = () => {
                         if (!designer && t.task_type === 'designing') designer = t.assignee_name;
                         if (!printingTech && t.task_type === 'printing') printingTech = t.assignee_name;
                         if (!deliverySup && t.task_type === 'delivery') deliverySup = t.assignee_name;
-                        t = t.parent_task_id ? tasks.find(x => x.$id === t.parent_task_id) ?? null : null;
+                        t = t?.parent_task_id
+    ? (() => {
+        const parent = tasks.find(x => x.$id === t?.parent_task_id);
+        return parent ? parent : null;
+      })()
+    : null;
                         safety++;
                       }
                       return (

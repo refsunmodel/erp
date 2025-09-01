@@ -12,7 +12,6 @@ import { useToast } from '@/hooks/use-toast';
 import { employeeService, storeService, salaryService } from '@/lib/database';
 import { createUserAccount } from '@/lib/appwrite';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/appwrite';
 
 interface Employee {  
   $id: string;
@@ -161,18 +160,20 @@ export const Employees: React.FC = () => {
         }
       }
 
+      // If auth_user_id is empty string, set to null to avoid invalid uuid error
+      const safe_auth_user_id = auth_user_id && auth_user_id.trim() !== '' ? auth_user_id : null;
+
       // Validate salary_date (if set) to ensure it's a valid day for any month
       let salary_date = formData.salary_date;
       if (salary_date) {
         const day = parseInt(salary_date, 10);
-        // Use September as a reference (30 days)
         if (day > 28) {
-          // Find the max day for September (or any month, but 30 is safe for most)
           const maxDay = 30;
           if (day > maxDay) salary_date = String(maxDay);
         }
       }
 
+      // Only set password on create, not on edit
       const employeeData = {
         name: formData.name,
         email: formData.email,
@@ -181,10 +182,10 @@ export const Employees: React.FC = () => {
         mode_of_payment: formData.mode_of_payment,
         salary_date: formData.salary_date,
         store_id: formData.store_id || null,
-        password: formData.password,
         status: 'Active',
-        auth_user_id,
-        advance_payment: Number(formData.advance_payment) || 0
+        auth_user_id: safe_auth_user_id,
+        advance_payment: Number(formData.advance_payment) || 0,
+        ...(editingEmployee ? {} : { password: formData.password }) // Only set password if creating
       };
 
       if (editingEmployee) {
@@ -193,16 +194,16 @@ export const Employees: React.FC = () => {
           title: "Employee Updated",
           description: "Employee information has been updated successfully.",
         });
-        setIsAddDialogOpen(false); // <-- Ensure dialog closes after update
-        setEditingEmployee(null);  // <-- Reset editingEmployee after update
+        setIsAddDialogOpen(false);
+        setEditingEmployee(null);
       } else {
         await employeeService.create(employeeData);
         toast({
           title: "Employee Added",
           description: "New employee has been added successfully.",
         });
-        setIsAddDialogOpen(false); // <-- Ensure dialog closes after add
-        setEditingEmployee(null);  // <-- Reset editingEmployee after add
+        setIsAddDialogOpen(false);
+        setEditingEmployee(null);
       }
 
       await loadEmployees();

@@ -12,7 +12,7 @@ import {
   Users, 
   Store, 
   CheckSquare, 
-  TrendingUp, 
+  TrendingUp,  
   Calendar,
   DollarSign,
   FileText,
@@ -465,6 +465,24 @@ const EmployeeDashboard = () => {
         return 'bg-red-100 text-red-800';
       default:
         return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  // Add updateTaskStatus function
+  const updateTaskStatus = async (taskId: string, newStatus: string) => {
+    try {
+      await taskService.update(taskId, { status: newStatus, last_updated: new Date().toISOString() });
+      toast({
+        title: "Task Updated",
+        description: `Task status changed to ${newStatus.replace('-', ' ')}`,
+      });
+      await loadMyTasks();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to update task: " + error.message,
+        variant: "destructive"
+      });
     }
   };
 
