@@ -8,7 +8,7 @@ export async function withRetry<T>(
   fn: () => Promise<T>,
   retries = 3,
   delay = 1000
-): Promise<T> {
+): Promise<T> { 
   let lastError;
   for (let i = 0; i < retries; i++) {
     try {
@@ -35,7 +35,7 @@ export const employeeService = {
     return await withRetry(async () => {
       const { data, error } = await supabase
         .from(TABLES.EMPLOYEES)
-        .select('id,name,role,store_id,email,auth_user_id,status,annual_salary,mode_of_payment,salary_date,created_at,advance_payment,password,last_payment_date')
+        .select('id,name,role,store_id,email,auth_user_id,status,annual_salary,mode_of_payment,salary_date,created_at,advance_payment,password,last_payment_date,tasks_completed') // <-- add tasks_completed here
         .limit(limit);
 
       if (error) {
@@ -58,6 +58,7 @@ export const employeeService = {
         advancePayment: emp.advance_payment,
         password: emp.password,
         lastPaymentDate: emp.last_payment_date,
+        tasks_completed: emp.tasks_completed ?? 0, // <-- map tasks_completed
       }));
       return { data: mapped, error: null };
     });
@@ -95,6 +96,30 @@ export const employeeService = {
 
     if (error) console.error('Supabase getByStore error:', error);
     return { data: mapped, error };
+  },
+
+  async incrementTasksCompleted(authUserId: string) {
+    // Find employee by auth_user_id
+    const { data } = await supabase
+      .from(TABLES.EMPLOYEES)
+      .select('id,tasks_completed')
+      .eq('auth_user_id', authUserId)
+      .single();
+    if (data && data.id) {
+      const newCount = (data.tasks_completed || 0) + 1;
+      await supabase.from(TABLES.EMPLOYEES).update({ tasks_completed: newCount }).eq('id', data.id);
+    }
+  },
+  async decrementTasksCompleted(authUserId: string) {
+    const { data } = await supabase
+      .from(TABLES.EMPLOYEES)
+      .select('id,tasks_completed')
+      .eq('auth_user_id', authUserId)
+      .single();
+    if (data && data.id) {
+      const newCount = Math.max(0, (data.tasks_completed || 0) - 1);
+      await supabase.from(TABLES.EMPLOYEES).update({ tasks_completed: newCount }).eq('id', data.id);
+    }
   }
 };
 
@@ -180,7 +205,7 @@ export const taskService = {
     return await withRetry(async () => {
       let query = supabase
         .from(TABLES.TASKS)
-        .select('id,order_no,title,description,task_type,assignee_id,assignee_name,due_date,due_time,status,priority,created_by,file_url,customer_phone,printing_type,workflow_stage,original_order_id,parent_task_id,last_updated,created_at')
+        .select('id,order_no,title,description,task_type,assignee_id,assignee_name,due_date,due_time,status,priority,created_by,file_url,customer_phone,printing_type,workflow_stage,original_order_id,parent_task_id,last_updated,created_at,external_id,external_parent_id') // <-- add external_id, external_parent_id
         .order('created_at', { ascending: false })
         .range(page * limit, (page + 1) * limit - 1);
 
@@ -224,6 +249,8 @@ export const taskService = {
         parent_task_id: t.parent_task_id,
         last_updated: t.last_updated,
         $createdAt: t.created_at,
+        external_id: t.external_id, // <-- add mapping
+        external_parent_id: t.external_parent_id, // <-- add mapping
       }));
       return { data: mapped, error: null };
     });
@@ -247,7 +274,7 @@ export const taskService = {
   async getByAssignee(assigneeAuthUserId: string, limit = 20, page = 0) {
     let query = supabase
       .from(TABLES.TASKS)
-      .select('id,order_no,title,description,task_type,assignee_id,assignee_name,due_date,due_time,status,priority,created_by,file_url,customer_phone,printing_type,workflow_stage,original_order_id,parent_task_id,last_updated,created_at')
+      .select('id,order_no,title,description,task_type,assignee_id,assignee_name,due_date,due_time,status,priority,created_by,file_url,customer_phone,printing_type,workflow_stage,original_order_id,parent_task_id,last_updated,created_at,external_id,external_parent_id') // <-- add external_id, external_parent_id
       .order('created_at', { ascending: false })
       .range(page * limit, (page + 1) * limit - 1);
 
@@ -277,6 +304,8 @@ export const taskService = {
       parent_task_id: t.parent_task_id,
       last_updated: t.last_updated,
       $createdAt: t.created_at,
+      external_id: t.external_id, // <-- add mapping
+      external_parent_id: t.external_parent_id, // <-- add mapping
     }));
 
     return { data: mapped, error };

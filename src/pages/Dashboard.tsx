@@ -363,7 +363,8 @@ const EmployeeDashboard = () => {
   const [myTasks, setMyTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
-
+  // Add filter for stats
+  const [statsFilter, setStatsFilter] = useState<'daily' | 'weekly' | 'monthly' | 'yearly' | 'lifetime'>('monthly');
 
   useEffect(() => {
     if (user) {
@@ -393,22 +394,36 @@ const EmployeeDashboard = () => {
     }
   };
 
-  const updateTaskStatus = async (taskId: string, newStatus: string) => {
-    try {
-      await taskService.update(taskId, { status: newStatus });
-      toast({
-        title: "Task Updated",
-        description: `Task status changed to ${newStatus.replace('-', ' ')}`,
-      });
-      await loadMyTasks();
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: "Failed to update task: " + error.message,
-        variant: "destructive"
-      });
+  // --- Task statistics by filter ---
+  const now = new Date();
+  const filterFn = (task: any) => {
+    const completed = task.status === 'completed';
+    if (!completed) return false;
+    const created = new Date(task.$createdAt);
+    if (statsFilter === 'daily') {
+      return created.toDateString() === now.toDateString();
     }
+    if (statsFilter === 'weekly') {
+      const weekAgo = new Date(now);
+      weekAgo.setDate(now.getDate() - 7);
+      return created >= weekAgo && created <= now;
+    }
+    if (statsFilter === 'monthly') {
+      return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
+    }
+    if (statsFilter === 'yearly') {
+      return created.getFullYear() === now.getFullYear();
+    }
+    // lifetime
+    return true;
   };
+  const completedStatsCount = myTasks.filter(filterFn).length;
+
+  // Recent completed tasks (last 5)
+  const recentCompletedTasks = myTasks
+    .filter(t => t.status === 'completed')
+    .sort((a, b) => new Date(b.$createdAt).getTime() - new Date(a.$createdAt).getTime())
+    .slice(0, 5);
 
   if (loading) {
     return (
@@ -455,6 +470,20 @@ const EmployeeDashboard = () => {
 
   return (
     <div className="container mx-auto px-2 sm:px-4 py-4 space-y-6">
+      {/* Stats Filter for Employee */}
+      <div className="flex gap-2 mb-2">
+        <Label>Stats Filter:</Label>
+        <Select value={statsFilter} onValueChange={v => setStatsFilter(v as any)}>
+          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="daily">Daily</SelectItem>
+            <SelectItem value="weekly">Weekly</SelectItem>
+            <SelectItem value="monthly">Monthly</SelectItem>
+            <SelectItem value="yearly">Yearly</SelectItem>
+            <SelectItem value="lifetime">Lifetime</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">My Dashboard</h1>
         <p className="text-gray-600 mt-2 text-sm sm:text-base">Welcome back, {user?.employeeData?.name || user?.email}! Here's your task overview.</p>
@@ -651,6 +680,53 @@ const EmployeeDashboard = () => {
         </CardContent>
       </Card>
 
+      {/* Completed Task Stats */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Completed Tasks ({statsFilter.charAt(0).toUpperCase() + statsFilter.slice(1)})</CardTitle>
+          <CardDescription>
+            You have completed <span className="font-bold">{completedStatsCount}</span> tasks {statsFilter === 'daily' ? 'today' : `this ${statsFilter}`}.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      {/* Recent Completed Tasks */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Completed Tasks</CardTitle>
+          <CardDescription>Last 5 tasks you completed</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {recentCompletedTasks.length === 0 ? (
+            <div className="text-gray-500 text-sm">No completed tasks yet.</div>
+          ) : (
+            <ul className="space-y-2">
+              {recentCompletedTasks.map(task => (
+                <li key={task.$id} className="border-b pb-2">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="font-medium">{task.title}</span>
+                      <span className="ml-2 text-xs text-gray-500">{task.task_type}</span>
+                    </div>
+                    <span className="text-xs text-gray-400">{new Date(task.$createdAt).toLocaleString()}</span>
+                  </div>
+                  <div className="text-xs text-gray-600">{task.description}</div>
+                  {/* View Detail Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-1 text-xs"
+                    onClick={() => window.location.assign(`/tasks?view=${task.$id}`)}
+                  >
+                    View Detail
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Quick Actions */}
       <Card>
         <CardHeader>
@@ -838,6 +914,7 @@ export const Dashboard: React.FC = () => {
     case 'Delivery Supervisor':
       return <EmployeeDashboard />;
     default:
+      // Accept any other string role, including 'Staff'
       return <EmployeeDashboard />;
   }
 };

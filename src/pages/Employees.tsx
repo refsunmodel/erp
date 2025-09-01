@@ -12,8 +12,9 @@ import { useToast } from '@/hooks/use-toast';
 import { employeeService, storeService, salaryService } from '@/lib/database';
 import { createUserAccount } from '@/lib/appwrite';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/appwrite';
 
-interface Employee { 
+interface Employee {  
   $id: string;
   name: string;
   email: string;
@@ -30,6 +31,7 @@ interface Employee {
   password?: string;
   $createdAt: string;
   advance_payment?: number;
+  tasks_completed?: number; // <-- add this field
 }
 
 interface Store {
@@ -102,7 +104,8 @@ export const Employees: React.FC = () => {
           store_name: store?.name || null,
           last_payment_date: lastSalary?.pay_date || lastSalary?.created_at || null,
           advance_payment: emp.advance_payment || 0,
-          salary_date // always string, never null/undefined
+          salary_date, // always string, never null/undefined
+          tasks_completed: emp.tasks_completed ?? 0 // <-- ensure tasks_completed is present
         };
       });
       
@@ -136,10 +139,10 @@ export const Employees: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    
+
     try {
-      let auth_user_id = editingEmployee?.auth_user_id;
-      
+      let auth_user_id = editingEmployee?.auth_user_id ?? '';
+
       // Create user account if adding new employee
       if (!editingEmployee && formData.email && formData.password) {
         try {
@@ -158,11 +161,23 @@ export const Employees: React.FC = () => {
         }
       }
 
+      // Validate salary_date (if set) to ensure it's a valid day for any month
+      let salary_date = formData.salary_date;
+      if (salary_date) {
+        const day = parseInt(salary_date, 10);
+        // Use September as a reference (30 days)
+        if (day > 28) {
+          // Find the max day for September (or any month, but 30 is safe for most)
+          const maxDay = 30;
+          if (day > maxDay) salary_date = String(maxDay);
+        }
+      }
+
       const employeeData = {
         name: formData.name,
         email: formData.email,
         role: formData.role,
-        annual_salary: Number(formData.annual_salary), // <-- snake_case
+        annual_salary: Number(formData.annual_salary),
         mode_of_payment: formData.mode_of_payment,
         salary_date: formData.salary_date,
         store_id: formData.store_id || null,
@@ -178,12 +193,16 @@ export const Employees: React.FC = () => {
           title: "Employee Updated",
           description: "Employee information has been updated successfully.",
         });
+        setIsAddDialogOpen(false); // <-- Ensure dialog closes after update
+        setEditingEmployee(null);  // <-- Reset editingEmployee after update
       } else {
         await employeeService.create(employeeData);
         toast({
           title: "Employee Added",
           description: "New employee has been added successfully.",
         });
+        setIsAddDialogOpen(false); // <-- Ensure dialog closes after add
+        setEditingEmployee(null);  // <-- Reset editingEmployee after add
       }
 
       await loadEmployees();
@@ -220,11 +239,10 @@ export const Employees: React.FC = () => {
     setFormData({
       name: employee.name,
       email: employee.email,
-      password: '',
+      password: '', // <-- allow reset
       role: employee.role,
       annual_salary: (employee.annual_salary ?? '').toString(),
       mode_of_payment: employee.mode_of_payment || '',
-      // Fix: always use string for salary_date, fallback to ''
       salary_date: (employee.salary_date !== undefined && employee.salary_date !== null && employee.salary_date !== '')
         ? employee.salary_date.toString()
         : '',
@@ -345,19 +363,18 @@ export const Employees: React.FC = () => {
                   </div>
                 </div>
                 
-                {!editingEmployee && (
-                  <div className="space-y-2">
-                    <Label htmlFor="password">Password</Label>
-                    <Input
-                      id="password"
-                      type="password"
-                      value={formData.password}
-                      onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                      required={!editingEmployee}
-                      placeholder="Enter password for new account"
-                    />
-                  </div>
-                )}
+                {/* Show password field for edit as well */}
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                    required={!editingEmployee}
+                    placeholder={editingEmployee ? "Leave blank to keep unchanged" : "Enter password for new account"}
+                  />
+                </div>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -374,6 +391,7 @@ export const Employees: React.FC = () => {
                         <SelectItem value="Printing Technician">Printing Technician</SelectItem>
                         <SelectItem value="Delivery Supervisor">Delivery Supervisor</SelectItem>
                         <SelectItem value="Admin">Admin</SelectItem>
+                        <SelectItem value="Staff">Staff</SelectItem> {/* Add Staff */}
                       </SelectContent>
                     </Select>
                   </div>
@@ -558,114 +576,118 @@ export const Employees: React.FC = () => {
 
           <div className="overflow-x-auto">
             <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Store</TableHead>
-                <TableHead>Annual Salary</TableHead>
-                <TableHead>Last Payment</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Password</TableHead>
-                <TableHead>Advance Payment</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredEmployees.map((employee) => (
-                <TableRow key={employee.$id}>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{employee.name}</p>
-                      <p className="text-sm text-gray-500">{employee.email}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={employee.role === 'Admin' ? 'default' : 'secondary'}>
-                      {employee.role}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {employee.store_name ? (
-                      <div className="flex items-center">
-                        <Building className="h-4 w-4 mr-2 text-gray-400" />
-                        {employee.store_name}
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Store</TableHead>
+                  <TableHead>Annual Salary</TableHead>
+                  <TableHead>Last Payment</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Password</TableHead>
+                  <TableHead>Advance Payment</TableHead>
+                  <TableHead>Tasks Completed</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredEmployees.map((employee) => (
+                  <TableRow key={employee.$id}>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{employee.name}</p>
+                        <p className="text-sm text-gray-500">{employee.email}</p>
                       </div>
-                    ) : (
-                      <span className="text-gray-400">No assignment</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center">
-                      <DollarSign className="h-3 w-3 mr-1" />
-                      <span>
-                        {employee.annual_salary === null || employee.annual_salary === undefined
-                          ? <span className="text-gray-400">N/A</span>
-                          : employee.annual_salary}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {employee.last_payment_date ? (
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={employee.role === 'Admin' ? 'default' : 'secondary'}>
+                        {employee.role}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {employee.store_name ? (
+                        <div className="flex items-center">
+                          <Building className="h-4 w-4 mr-2 text-gray-400" />
+                          {employee.store_name}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">No assignment</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
                       <div className="flex items-center">
-                        <Calendar className="h-3 w-3 mr-2 text-gray-400" />
-                        <span className="text-sm">
-                          {new Date(employee.last_payment_date).toLocaleDateString()}
+                        <DollarSign className="h-3 w-3 mr-1" />
+                        <span>
+                          {employee.annual_salary === null || employee.annual_salary === undefined
+                            ? <span className="text-gray-400">N/A</span>
+                            : employee.annual_salary}
                         </span>
                       </div>
-                    ) : (
-                      <span className="text-gray-400">No payments</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={employee.status === 'Active' ? 'default' : 'secondary'}>
-                      {employee.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleViewPassword(employee)}
-                    >
-                      View Password
-                    </Button>
-                  </TableCell>
-                  <TableCell>
-                    <span>${employee.advance_payment?.toLocaleString() || '0'}</span>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex space-x-2">
-                      {(user?.role === 'Admin' || user?.role === 'Manager') && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => paySalary(employee)}
-                        >
-                          Pay Salary
-                        </Button>
+                    </TableCell>
+                    <TableCell>
+                      {employee.last_payment_date ? (
+                        <div className="flex items-center">
+                          <Calendar className="h-3 w-3 mr-2 text-gray-400" />
+                          <span className="text-sm">
+                            {new Date(employee.last_payment_date).toLocaleDateString()}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">No payments</span>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={employee.status === 'Active' ? 'default' : 'secondary'}>
+                        {employee.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
                       <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleEdit(employee)}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleViewPassword(employee)}
                       >
-                        <Edit className="h-4 w-4" />
+                        View Password
                       </Button>
-                      {user?.role === 'Admin' && (
+                    </TableCell>
+                    <TableCell>
+                      <span>${employee.advance_payment?.toLocaleString() || '0'}</span>
+                    </TableCell>
+                    <TableCell>
+                      {employee.tasks_completed ?? 0}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        {(user?.role === 'Admin' || user?.role === 'Manager') && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => paySalary(employee)}
+                          >
+                            Pay Salary
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleDelete(employee.$id, employee.name)}
+                          onClick={() => handleEdit(employee)}
                         >
-                          <Trash className="h-4 w-4" />
+                          <Edit className="h-4 w-4" />
                         </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
+                        {user?.role === 'Admin' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(employee.$id, employee.name)}
+                          >
+                            <Trash className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
             </Table>
           </div>
         </CardContent>

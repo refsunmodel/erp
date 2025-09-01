@@ -8,7 +8,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 export const TABLES = {
   USERS: 'profiles',
   EMPLOYEES: 'employees',
-  CUSTOMERS: 'customers',
+  CUSTOMERS: 'customers', 
   STORES: 'stores',
   TASKS: 'tasks',
   DAILY_REPORTS: 'daily_reports',

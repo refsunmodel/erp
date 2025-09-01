@@ -15,7 +15,7 @@ import { attendanceService, employeeService } from '@/lib/database';
 interface AttendanceRecord {
   $id: string;
   employee_id: string;
-  employee_name: string;
+  employee_name: string; 
   date: string;
   status: 'Present' | 'Absent';
   day_type: 'Full Day' | 'Half Day';

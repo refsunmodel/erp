@@ -14,7 +14,8 @@ import { useToast } from '@/hooks/use-toast';
 import { taskService, employeeService } from '@/lib/database';
 import { Dialog as TaskDetailDialog, DialogContent as TaskDetailDialogContent, DialogHeader as TaskDetailDialogHeader, DialogTitle as TaskDetailDialogTitle } from '@/components/ui/dialog';
 
-interface Task {
+
+interface Task { 
   $id: string;
   order_no?: string;
   title: string;
@@ -35,6 +36,8 @@ interface Task {
   $createdAt: string;
   parent_task_id?: string; // Add 'parent_task_id' to Task interface for workflow linking
   last_updated?: string; // Add last_updated field
+  external_id?: string; // <-- add this field
+  external_parent_id?: string; // <-- add this field
 }
 
 interface Employee {
@@ -58,7 +61,7 @@ export const Tasks: React.FC = () => {
   const [isTaskDetailOpen, setIsTaskDetailOpen] = useState(false);
   const [selectedTaskDetail, setSelectedTaskDetail] = useState<Task | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [filter, setFilter] = useState('monthly'); // Add filter state
+  const [filter, setFilter] = useState('lifetime'); // Add filter state
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [assignTask, setAssignTask] = useState<Task | null>(null);
   const [assignType, setAssignType] = useState<'printing' | 'delivery' | null>(null);
@@ -209,6 +212,9 @@ export const Tasks: React.FC = () => {
     const now = new Date();
     return tasks.filter(task => {
       const created = new Date(task.$createdAt);
+      if (filter === 'daily') {
+        return created.toDateString() === now.toDateString();
+      }
       if (filter === 'weekly') {
         const weekAgo = new Date(now);
         weekAgo.setDate(now.getDate() - 7);
@@ -252,6 +258,15 @@ export const Tasks: React.FC = () => {
         throw new Error('Selected employee does not have a valid user account');
       }
 
+      // Validate due_date to ensure it's a valid date
+      let due_date = formData.due_date;
+      if (due_date) {
+        const [year, month, day] = due_date.split('-').map(Number);
+        const lastDay = new Date(year, month, 0).getDate();
+        if (day > lastDay) {
+          due_date = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+        }
+      }
 
       const taskData = {
         order_no: formData.order_no || undefined,
@@ -315,8 +330,20 @@ export const Tasks: React.FC = () => {
       const task = tasks.find(t => t.$id === taskId);
       if (!task) return;
 
+      const prevStatus = task.status;
+
       // Update the task status and last_updated
       await taskService.update(taskId, { status: newStatus, last_updated: new Date().toISOString() });
+
+      // --- Update tasks_completed count on employee record ---
+      if (prevStatus !== 'completed' && newStatus === 'completed') {
+        // Increment tasks_completed for assignee
+        await employeeService.incrementTasksCompleted(task.assignee_id);
+      } else if (prevStatus === 'completed' && newStatus !== 'completed') {
+        // Decrement tasks_completed for assignee (optional)
+        await employeeService.decrementTasksCompleted(task.assignee_id);
+      }
+      // --- end update ---
 
       // If delivered or not-delivered, remove from list for Delivery Supervisor
       if (
@@ -402,6 +429,7 @@ export const Tasks: React.FC = () => {
             customer_phone: task.customer_phone,
             printing_type: task.printing_type,
             last_updated: new Date().toISOString(),
+            external_parent_id: (task as any).external_id || task.$id, // Use type assertion to avoid TS error
           };
           await taskService.create(deliveryTaskData);
           toast({
@@ -432,18 +460,31 @@ export const Tasks: React.FC = () => {
       // Find employee by $id, but use authUserId for assignment
       const nextEmp = employees.find(emp => emp.$id === assignEmployeeId);
       if (!nextEmp || !nextEmp.authUserId) throw new Error('Select a valid employee');
-      const updateData: Partial<Task> = {
+      let updateData: Partial<Task> = {
         task_type: assignType,
         workflow_stage: assignType,
-        assignee_id: nextEmp.authUserId, // Use authUserId for assignment
+        assignee_id: nextEmp.authUserId,
         assignee_name: nextEmp.name,
         status: 'pending',
         parent_task_id: assignTask.$id,
       };
-      if (assignType === 'delivery') {
+
+      // Set external_id for printing (designer's authUserId)
+      // Set external_parent_id for delivery (printing technician's authUserId)
+      if (assignType === 'printing') {
+        if (!(assignTask as any).external_id) {
+          (updateData as any).external_id = assignTask.assignee_id;
+        } else {
+          (updateData as any).external_id = (assignTask as any).external_id;
+        }
+        // Do NOT set external_parent_id for printing
+      } else if (assignType === 'delivery') {
+        (updateData as any).external_id = (assignTask as any).external_id;
+        (updateData as any).external_parent_id = assignTask.assignee_id;
         updateData.due_date = '';
         updateData.due_time = '';
       }
+
       await taskService.update(assignTask.$id, updateData);
       toast({
         title: "Task Assigned",
@@ -637,6 +678,7 @@ export const Tasks: React.FC = () => {
             <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="lifetime">Lifetime</SelectItem>
+              <SelectItem value="daily">Daily</SelectItem>
               <SelectItem value="weekly">Weekly</SelectItem>
               <SelectItem value="monthly">Monthly</SelectItem>
               <SelectItem value="yearly">Yearly</SelectItem>
@@ -1081,19 +1123,33 @@ export const Tasks: React.FC = () => {
                               </SelectContent>
                             </Select>
                           ) : (user?.role !== 'Admin') && (
-                            <Select
-                              value={task.status || 'pending'}
-                              onValueChange={(value: Task['status']) => updateTaskStatus(task.$id, value)}
-                            >
-                              <SelectTrigger className="w-full sm:w-32 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="in-progress">In Progress</SelectItem>
-                                <SelectItem value="completed">Completed</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            // For manager, disable status select for designing tasks
+                            (user?.role === 'Manager' && task.task_type === 'designing') ? (
+                              <Select value={task.status || 'pending'} disabled>
+                                <SelectTrigger className="w-full sm:w-32 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pending">Pending</SelectItem>
+                                  <SelectItem value="in-progress">In Progress</SelectItem>
+                                  <SelectItem value="completed">Completed</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Select
+                                value={task.status || 'pending'}
+                                onValueChange={(value: Task['status']) => updateTaskStatus(task.$id, value)}
+                              >
+                                <SelectTrigger className="w-full sm:w-32 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pending">Pending</SelectItem>
+                                  <SelectItem value="in-progress">In Progress</SelectItem>
+                                  <SelectItem value="completed">Completed</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )
                           )}
                           {/* Edit button for Admin/Manager/Designer only */}
                           {(user?.role === 'Admin' || user?.role === 'Manager' || user?.role === 'Graphic Designer') && (
@@ -1389,6 +1445,86 @@ export const Tasks: React.FC = () => {
                 </div>
               )}
               
+              {/* Show designer and printing technician for completed tasks */}
+              {selectedTaskDetail.status === 'completed' && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Designer</Label>
+                  <p className="text-sm text-gray-700 mt-1">
+                    {
+                      (() => {
+                        // Traverse parent_task_id chain to find designer and printing technician
+                        let designer = null, printingTech = null;
+                        let t: Task | null = selectedTaskDetail;
+                        // Traverse up to find designer and printing technician
+                        for (let i = 0; i < 3 && t; i++) {
+                          if (t.task_type === 'designing' && !designer) designer = t.assignee_name;
+                          if (t.task_type === 'printing' && !printingTech) printingTech = t.assignee_name;
+                          t = t.parent_task_id ? tasks.find(x => x.$id === t.parent_task_id) ?? null : null;
+                        }
+                        return (
+                          <>
+                            <span>{designer || '-'}</span>
+                            <br />
+                            <Label className="text-sm font-medium">Printing Technician</Label>
+                            <span>{printingTech || '-'}</span>
+                          </>
+                        );
+                      })()
+                    }
+                  </p>
+                </div>
+              )}
+              {/* Always show workflow assignees chain */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Workflow Assignees</Label>
+                <div className="text-sm text-gray-700 mt-1">
+                  {
+                    (() => {
+                      // Designer: external_id (designer's authUserId)
+                      let designer = null, printingTech = null, deliverySup = null;
+                      if (selectedTaskDetail.external_id) {
+                        const designerEmp = employees.find(emp => emp.authUserId === selectedTaskDetail.external_id);
+                        designer = designerEmp?.name || null;
+                      }
+                      // Printing Technician: external_parent_id (printing technician's authUserId)
+                      if (selectedTaskDetail.external_parent_id) {
+                        const printingEmp = employees.find(emp => emp.authUserId === selectedTaskDetail.external_parent_id);
+                        printingTech = printingEmp?.name || null;
+                      }
+                      // Delivery Supervisor: just use assignee_name for delivery tasks
+                      if (selectedTaskDetail.task_type === 'delivery') {
+                        deliverySup = selectedTaskDetail.assignee_name;
+                      }
+                      // Fallback: Traverse parent_task_id chain for any missing info
+                      let t: Task | null = selectedTaskDetail;
+                      let safety = 0;
+                      while (t && safety < 5) {
+                        if (!designer && t.task_type === 'designing') designer = t.assignee_name;
+                        if (!printingTech && t.task_type === 'printing') printingTech = t.assignee_name;
+                        if (!deliverySup && t.task_type === 'delivery') deliverySup = t.assignee_name;
+                        t = t.parent_task_id ? tasks.find(x => x.$id === t.parent_task_id) ?? null : null;
+                        safety++;
+                      }
+                      return (
+                        <div>
+                          <div>
+                            <span className="font-semibold">Designer: </span>
+                            {designer || <span className="text-gray-400">No past assignee</span>}
+                          </div>
+                          <div>
+                            <span className="font-semibold">Printing Technician: </span>
+                            {printingTech || <span className="text-gray-400">No past assignee</span>}
+                          </div>
+                          <div>
+                            <span className="font-semibold">Delivery Supervisor: </span>
+                            {deliverySup || <span className="text-gray-400">No past assignee</span>}
+                          </div>
+                        </div>
+                      );
+                    })()
+                  }
+                </div>
+              </div>
               <div className="flex justify-end pt-4">
                 <Button onClick={() => setIsTaskDetailOpen(false)}>
                   Close
