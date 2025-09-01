@@ -332,15 +332,24 @@ export const Tasks: React.FC = () => {
 
       const prevStatus = task.status;
 
+      // If task is a delivery and being marked as delivered, delete it from DB (including from database)
+      if (task.task_type === 'delivery' && newStatus === 'delivered') {
+        await taskService.delete(taskId); // Remove from database
+        setTasks(prev => prev.filter(t => t.$id !== taskId)); // Remove from UI state
+        toast({
+          title: "Task Delivered",
+          description: "Delivery task has been marked as delivered and deleted from the database.",
+        });
+        return;
+      }
+
       // Update the task status and last_updated
       await taskService.update(taskId, { status: newStatus, last_updated: new Date().toISOString() });
 
       // --- Update tasks_completed count on employee record ---
       if (prevStatus !== 'completed' && newStatus === 'completed') {
-        // Increment tasks_completed for assignee
         await employeeService.incrementTasksCompleted(task.assignee_id);
       } else if (prevStatus === 'completed' && newStatus !== 'completed') {
-        // Decrement tasks_completed for assignee (optional)
         await employeeService.decrementTasksCompleted(task.assignee_id);
       }
       // --- end update ---
@@ -351,7 +360,7 @@ export const Tasks: React.FC = () => {
         user?.role === 'Delivery Supervisor'
       ) {
         setTasks(prev => prev.filter(t => t.$id !== taskId));
-        return; // Don't reload all tasks, just remove from UI
+        return;
       }
 
       // If delivered, remove from list for Delivery Supervisor (legacy)
@@ -481,8 +490,15 @@ export const Tasks: React.FC = () => {
       } else if (assignType === 'delivery') {
         (updateData as any).external_id = (assignTask as any).external_id;
         (updateData as any).external_parent_id = assignTask.assignee_id;
-        updateData.due_date = '';
-        updateData.due_time = '';
+
+        // Fix: Only clear due_date if previous due_date is empty or invalid, otherwise keep the admin-assigned date
+        if (!assignTask.due_date || assignTask.due_date === '1970-01-01') {
+          updateData.due_date = '';
+          updateData.due_time = '';
+        } else {
+          updateData.due_date = assignTask.due_date;
+          updateData.due_time = assignTask.due_time;
+        }
       }
 
       await taskService.update(assignTask.$id, updateData);
